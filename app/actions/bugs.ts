@@ -85,7 +85,11 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const userId = await requireUserId();
+  const admin = await requireAdminUserId();
+  if ("error" in admin) {
+    return { error: admin.error };
+  }
+  const userId = admin.userId;
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({
