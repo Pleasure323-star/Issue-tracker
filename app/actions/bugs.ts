@@ -72,12 +72,8 @@ export async function createBugAction(
     data: {
       title: parsed.data.title,
       description: parsed.data.description,
-<<<<<<< HEAD
-      severity: parsed.data.severity,
-      status: "open",
-=======
       severity: admin ? parsed.data.severity : "medium",
->>>>>>> endor/main
+      status: "open",
       proofLinks: parsed.data.proofLinks,
       reporterId: userId,
       assigneeId,
@@ -261,7 +257,6 @@ export async function addCommentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
   }
 
-<<<<<<< HEAD
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
     select: { id: true },
@@ -270,27 +265,6 @@ export async function addCommentAction(
     return { error: "Bug not found" };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.comment.create({
-      data: {
-        bugId,
-        authorId: userId,
-        body: parsed.data.body,
-      },
-    });
-    await tx.bugActivity.create({
-      data: {
-        bugId,
-        actorId: userId,
-        type: "commented",
-        summary: commentedSummary(parsed.data.body),
-        metadata: {
-          field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
-        } as Prisma.InputJsonValue,
-      },
-    });
-=======
   const parentId = parsed.data.parentId;
 
   if (parentId) {
@@ -319,14 +293,27 @@ export async function addCommentAction(
     }
   }
 
-  await prisma.comment.create({
-    data: {
-      bugId,
-      authorId: userId,
-      body: parsed.data.body,
-      parentId: parentId ?? null,
-    },
->>>>>>> endor/main
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.create({
+      data: {
+        bugId,
+        authorId: userId,
+        body: parsed.data.body,
+        parentId: parentId ?? null,
+      },
+    });
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: userId,
+        type: "commented",
+        summary: commentedSummary(parsed.data.body),
+        metadata: {
+          field: "comment",
+          commentPreview: parsed.data.body.slice(0, 120),
+        } as Prisma.InputJsonValue,
+      },
+    });
   });
 
   revalidatePath(`/bugs/${bugId}`);
