@@ -44,24 +44,10 @@ export function CommentForm({
 
   const showSuggestions = mention !== null && suggestions.length > 0;
 
-  const syncMentionFromCaret = useCallback(
-    (value: string, caret: number) => {
-      const next = getMentionQuery(value, caret);
-      setMention((prev) => {
-        if (prev?.start === next?.start && prev?.query === next?.query) {
-          return prev;
-        }
-        return next;
-      });
-      if (
-        next?.start !== mention?.start ||
-        next?.query !== mention?.query
-      ) {
-        setActiveIndex(0);
-      }
-    },
-    [mention?.query, mention?.start],
-  );
+  const syncMentionFromCaret = useCallback((value: string, caret: number) => {
+    setMention(getMentionQuery(value, caret));
+    setActiveIndex(0);
+  }, []);
 
   const applyMention = useCallback(
     (user: UserOption) => {
