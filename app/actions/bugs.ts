@@ -9,6 +9,10 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
 import {
+  MAX_COMMENT_DEPTH,
+  commentDepth,
+} from "@/lib/comments";
+import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
@@ -25,27 +29,22 @@ async function requireUserId() {
   return resolved.userId;
 }
 
-async function requireAdminUserId() {
-  const userId = await requireUserId();
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true },
-  });
-  if (!user || !isAdmin(user.role)) {
-    return { error: "Only admins can triage bugs" } as const;
-  }
-  return { userId: user.id } as const;
-}
-
 export async function createBugAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const userId = await requireUserId();
+  const creator = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  const admin = isAdmin(creator?.role);
+
+  // Non-admins cannot set severity/assignee at creation.
   const parsed = createBugSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description"),
-    severity: formData.get("severity") || "medium",
-    assigneeId: formData.get("assigneeId") || "",
+    severity: admin ? formData.get("severity") || "medium" : "medium",
+    assigneeId: admin ? formData.get("assigneeId") || "" : "",
     proofLinks: formData.get("proofLinks") || "",
   });
 
@@ -54,15 +53,16 @@ export async function createBugAction(
   }
 
   const assigneeId =
-    parsed.data.assigneeId && parsed.data.assigneeId.length > 0
+    admin && parsed.data.assigneeId && parsed.data.assigneeId.length > 0
       ? parsed.data.assigneeId
       : null;
 
+  // Always open at creation — createBugSchema rejects client status.
   const bug = await prisma.bug.create({
     data: {
       title: parsed.data.title,
       description: parsed.data.description,
-      severity: parsed.data.severity,
+      severity: admin ? parsed.data.severity : "medium",
       proofLinks: parsed.data.proofLinks,
       reporterId: userId,
       assigneeId,
@@ -77,19 +77,37 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const admin = await requireAdminUserId();
-  if ("error" in admin) {
-    return { error: admin.error };
+  const userId = await requireUserId();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  const admin = isAdmin(user?.role);
+
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { assigneeId: true },
+  });
+  if (!existing) {
+    return { error: "Bug not found" };
+  }
+
+  const isAssignee = existing.assigneeId === userId;
+  if (!admin && !isAssignee) {
+    return {
+      error: "Only the assignee or an admin can update this bug",
+    };
   }
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({
     status: formData.get("status") || undefined,
-    severity: formData.get("severity") || undefined,
-    assigneeId:
-      assigneeRaw === "" || assigneeRaw === "unassigned"
+    severity: admin ? formData.get("severity") || undefined : undefined,
+    assigneeId: admin
+      ? assigneeRaw === "" || assigneeRaw === "unassigned"
         ? null
-        : assigneeRaw || undefined,
+        : assigneeRaw || undefined
+      : undefined,
   });
 
   if (!parsed.success) {
@@ -103,10 +121,12 @@ export async function updateBugAction(
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
-  if (parsed.data.severity) data.severity = parsed.data.severity;
-  if (parsed.data.assigneeId !== undefined) {
-    data.assigneeId =
-      parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
+  if (admin) {
+    if (parsed.data.severity) data.severity = parsed.data.severity;
+    if (parsed.data.assigneeId !== undefined) {
+      data.assigneeId =
+        parsed.data.assigneeId === "" ? null : parsed.data.assigneeId;
+    }
   }
 
   await prisma.bug.update({
@@ -126,10 +146,39 @@ export async function addCommentAction(
   const userId = await requireUserId();
   const parsed = commentSchema.safeParse({
     body: formData.get("body"),
+    parentId: formData.get("parentId") || undefined,
   });
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  }
+
+  const parentId = parsed.data.parentId;
+
+  if (parentId) {
+    const parent = await prisma.comment.findUnique({
+      where: { id: parentId },
+      select: { id: true, bugId: true, parentId: true },
+    });
+
+    if (!parent || parent.bugId !== bugId) {
+      return { error: "Parent comment not found on this ticket" };
+    }
+
+    const threadComments = await prisma.comment.findMany({
+      where: { bugId },
+      select: { id: true, parentId: true },
+    });
+    const parentById = new Map(
+      threadComments.map((c) => [c.id, c.parentId] as const),
+    );
+    const parentDepth = commentDepth(parent.id, parentById);
+
+    if (parentDepth >= MAX_COMMENT_DEPTH) {
+      return {
+        error: `Replies are limited to ${MAX_COMMENT_DEPTH} levels of nesting`,
+      };
+    }
   }
 
   await prisma.comment.create({
@@ -137,6 +186,7 @@ export async function addCommentAction(
       bugId,
       authorId: userId,
       body: parsed.data.body,
+      parentId: parentId ?? null,
     },
   });
 

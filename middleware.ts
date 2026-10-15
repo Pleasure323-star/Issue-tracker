@@ -20,11 +20,15 @@ export default auth((req) => {
 
   const isAuthPage =
     pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isPasswordResetPage =
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password");
   const isBugPreview =
     BUG_DETAIL_PATH.test(pathname) &&
     isLinkPreviewBot(req.headers.get("user-agent"));
   const isPublic =
     isAuthPage ||
+    isPasswordResetPage ||
     isBugPreview ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
@@ -37,6 +41,7 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
+  // Allow reset links even when a session exists; only bounce login/signup.
   if (isLoggedIn && isAuthPage) {
     const url = req.nextUrl.clone();
     url.pathname = "/bugs";
