@@ -49,6 +49,9 @@ App is served under **`/bug-tracker`** (see `next.config.ts` `basePath`), matchi
 | `AUTH_SECRET` | Session secret (`openssl rand -base64 32`) |
 | `AUTH_URL` / `NEXTAUTH_URL` | App origin **including** `/bug-tracker` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Idempotent super-admin seed (optional; password min 12 chars) |
+| `SUPER_ADMIN_FORCE_UPDATE` | Set `true` to rotate password / promote an existing account |
+| `SEED_DEMO_DATA` | Set `true` to wipe and load demo users/bugs |
 
 Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 
