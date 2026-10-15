@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
+import { canChangeBugStatus } from "@/lib/bug-permissions";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import {
@@ -51,7 +52,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -60,6 +61,11 @@ export default async function BugDetailPage({
   }
 
   const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+
+  const isAssignee = userId !== undefined && userId === bug.assigneeId;
+  const canChangeStatus =
+    userId !== undefined &&
+    canChangeBugStatus(userId, bug.assigneeId, canTriage);
 
   return (
     <div className="space-y-6">
@@ -161,13 +167,15 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      {canTriage ? (
+      {canTriage || isAssignee ? (
         <UpdateBugForm
           bugId={bug.id}
           status={bug.status}
           severity={bug.severity}
           assigneeId={bug.assigneeId}
           users={users}
+          canTriage={canTriage}
+          canChangeStatus={canChangeStatus}
         />
       ) : null}
 

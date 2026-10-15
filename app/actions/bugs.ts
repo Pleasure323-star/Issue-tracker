@@ -9,6 +9,10 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/session-user";
 import {
+  canChangeBugStatus,
+  NOT_ASSIGNEE_MESSAGE,
+} from "@/lib/bug-permissions";
+import {
   commentSchema,
   createBugSchema,
   updateBugSchema,
@@ -77,10 +81,7 @@ export async function updateBugAction(
   bugId: string,
   formData: FormData,
 ): Promise<ActionResult> {
-  const admin = await requireAdminUserId();
-  if ("error" in admin) {
-    return { error: admin.error };
-  }
+  const userId = await requireUserId();
 
   const assigneeRaw = formData.get("assigneeId");
   const parsed = updateBugSchema.safeParse({
@@ -94,6 +95,42 @@ export async function updateBugAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  // Severity and assignee are admin-only triage (ticket #9). Status is the
+  // assignee's call (ticket #10) and is deliberately allowed for any role,
+  // otherwise a non-admin assignee could never move their own bug.
+  const touchesTriageFields =
+    parsed.data.severity !== undefined ||
+    parsed.data.assigneeId !== undefined;
+  if (touchesTriageFields) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (!user || !isAdmin(user.role)) {
+      return { error: "Only admins can triage bugs" };
+    }
+  }
+
+  // Enforced server-side so hiding the control in the UI is not the only barrier.
+  if (parsed.data.status) {
+    const [existing, user] = await Promise.all([
+      prisma.bug.findUnique({
+        where: { id: bugId },
+        select: { assigneeId: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      }),
+    ]);
+    if (!existing) {
+      return { error: "Bug not found" };
+    }
+    if (!canChangeBugStatus(userId, existing.assigneeId, isAdmin(user?.role))) {
+      return { error: NOT_ASSIGNEE_MESSAGE };
+    }
   }
 
   const data: {

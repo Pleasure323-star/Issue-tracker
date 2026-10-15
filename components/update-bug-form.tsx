@@ -16,12 +16,16 @@ export function UpdateBugForm({
   severity,
   assigneeId,
   users,
+  canTriage,
+  canChangeStatus,
 }: {
   bugId: string;
   status: Status;
   severity: Severity;
   assigneeId: string | null;
   users: UserOption[];
+  canTriage: boolean;
+  canChangeStatus: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -49,54 +53,75 @@ export function UpdateBugForm({
           <label htmlFor="status" className="mb-1 block text-xs font-medium">
             Status
           </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={status}
-            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            {statuses.map((value) => (
-              <option key={value} value={value}>
-                {statusLabel[value]}
-              </option>
-            ))}
-          </select>
+          {canChangeStatus ? (
+            <select
+              id="status"
+              name="status"
+              defaultValue={status}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            >
+              {statuses.map((value) => (
+                <option key={value} value={value}>
+                  {statusLabel[value]}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <p
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-500"
+                data-testid="status-readonly"
+              >
+                {statusLabel[status]}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Only the assignee can change this status.
+              </p>
+            </>
+          )}
         </div>
-        <div>
-          <label htmlFor="severity" className="mb-1 block text-xs font-medium">
-            Severity
-          </label>
-          <select
-            id="severity"
-            name="severity"
-            defaultValue={severity}
-            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            {severities.map((value) => (
-              <option key={value} value={value}>
-                {severityLabel[value]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="assigneeId" className="mb-1 block text-xs font-medium">
-            Assignee
-          </label>
-          <select
-            id="assigneeId"
-            name="assigneeId"
-            defaultValue={assigneeId ?? ""}
-            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            <option value="">Unassigned</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {formatUserLabel(user.name, user.role)}
-              </option>
-            ))}
-          </select>
-        </div>
+        {canTriage ? (
+          <>
+            <div>
+              <label htmlFor="severity" className="mb-1 block text-xs font-medium">
+                Severity
+              </label>
+              <select
+                id="severity"
+                name="severity"
+                defaultValue={severity}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                {severities.map((value) => (
+                  <option key={value} value={value}>
+                    {severityLabel[value]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="assigneeId"
+                className="mb-1 block text-xs font-medium"
+              >
+                Assignee
+              </label>
+              <select
+                id="assigneeId"
+                name="assigneeId"
+                defaultValue={assigneeId ?? ""}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">Unassigned</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {formatUserLabel(user.name, user.role)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        ) : null}
       </div>
       {error ? (
         <p className="text-sm text-red-600" role="alert">
