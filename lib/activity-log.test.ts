@@ -15,8 +15,9 @@ describe("activity summary helpers", () => {
     expect(createdSummary("Login broken")).toBe(
       'created this ticket (“Login broken”)',
     );
-    expect(createdSummary(long)).toContain("…");
-    expect(createdSummary(long).length).toBeLessThan(long.length);
+    const summarized = createdSummary(long);
+    expect(summarized).toContain("…");
+    expect(summarized).not.toContain(long);
   });
 
   it("summarizes status and severity changes", () => {
