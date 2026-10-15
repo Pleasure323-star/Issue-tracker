@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zedu Bugs",
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: "Zedu Bugs",
+    template: "%s · Zedu Bugs",
+  },
   description: "Zedu bug tracking interface — HNG15 mini-project",
+  openGraph: {
+    siteName: "Zedu Bugs",
+    type: "website",
+    images: [{ url: "/Zedu.png", alt: "Zedu Bugs" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/Zedu.png"],
+  },
 };
 
 export default function RootLayout({

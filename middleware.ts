@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "@/auth.config";
+import { isLinkPreviewBot } from "@/lib/link-preview";
 import { isSuperAdmin } from "@/lib/roles";
 
 /**
@@ -10,14 +11,21 @@ import { isSuperAdmin } from "@/lib/roles";
  */
 const { auth } = NextAuth(authConfig);
 
+/** Bug detail paths only — enough for unfurl bots to hit generateMetadata. */
+const BUG_DETAIL_PATH = /^\/bugs\/[^/]+\/?$/;
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth?.user;
 
   const isAuthPage =
     pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isBugPreview =
+    BUG_DETAIL_PATH.test(pathname) &&
+    isLinkPreviewBot(req.headers.get("user-agent"));
   const isPublic =
     isAuthPage ||
+    isBugPreview ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
