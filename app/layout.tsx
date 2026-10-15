@@ -23,11 +23,11 @@ export const metadata: Metadata = {
   openGraph: {
     siteName: "Zedu Bugs",
     type: "website",
-    images: [{ url: "/Zedu.png", alt: "Zedu Bugs" }],
+    images: [{ url: "/zedu-mark.svg", alt: "Zedu Bugs" }],
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/Zedu.png"],
+    images: ["/zedu-mark.svg"],
   },
 };
 

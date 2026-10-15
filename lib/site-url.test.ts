@@ -25,9 +25,6 @@ describe("absoluteUrl", () => {
     expect(absoluteUrl("/bugs/abc")).toBe(
       "https://contributors.zedu.chat/bug-tracker/bugs/abc",
     );
-    expect(absoluteUrl("/Zedu.png")).toBe(
-      "https://contributors.zedu.chat/bug-tracker/Zedu.png",
-    );
     expect(absoluteUrl("/zedu-mark.svg")).toBe(
       "https://contributors.zedu.chat/bug-tracker/zedu-mark.svg",
     );

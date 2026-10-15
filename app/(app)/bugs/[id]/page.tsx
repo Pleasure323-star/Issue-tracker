@@ -56,8 +56,8 @@ export async function generateMetadata({
     description: bug.description,
   });
   const canonical = absoluteUrl(`/bugs/${id}`);
-  // PNG for broad unfurl support (Slack/X/etc.); SVG mark is available too.
-  const image = absoluteUrl("/Zedu.png");
+  // Brand mark from public/; most unfurlers accept SVG, raster copy at /Zedu.png.
+  const image = absoluteUrl("/zedu-mark.svg");
   const title = bug.title;
 
   return {
