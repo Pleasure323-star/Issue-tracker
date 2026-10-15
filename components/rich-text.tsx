@@ -131,8 +131,9 @@ type InlineToken =
   | { type: "underline"; value: string }
   | { type: "link"; label: string; href: string };
 
+/** Links require http(s) so soft-mentions `@[Name](userId)` stay as text. */
 const INLINE_RE =
-  /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|<u>[\s\S]*?<\/u>|\[([^\]]+)\]\(([^)]+)\)|\*[^*]+\*|_[^_]+_)/g;
+  /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|<u>[\s\S]*?<\/u>|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*[^*]+\*|_[^_]+_)/g;
 
 function tokenizeInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];

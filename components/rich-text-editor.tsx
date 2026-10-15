@@ -1,14 +1,21 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useId,
+  useImperativeHandle,
   useRef,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { wrapSelection, type WrapKind } from "@/lib/rich-text";
+
+export type RichTextEditorHandle = {
+  focus: () => void;
+  getTextarea: () => HTMLTextAreaElement | null;
+};
 
 type RichTextEditorProps = {
   id?: string;
@@ -22,6 +29,8 @@ type RichTextEditorProps = {
   maxLength?: number;
   rows?: number;
   footer?: ReactNode;
+  /** Content layered under the field (e.g. mention suggestions). */
+  overlay?: ReactNode;
   "aria-label"?: string;
 } & Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
@@ -44,7 +53,10 @@ function ToolbarButton({
       type="button"
       title={title}
       disabled={disabled}
-      onClick={onClick}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        onClick();
+      }}
       className="rounded px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40"
     >
       {label}
@@ -52,25 +64,37 @@ function ToolbarButton({
   );
 }
 
-export function RichTextEditor({
-  id,
-  name,
-  value,
-  onChange,
-  placeholder,
-  disabled = false,
-  required,
-  minLength,
-  maxLength,
-  rows = 6,
-  footer,
-  "aria-label": ariaLabel,
-  className = "",
-  ...rest
-}: RichTextEditorProps) {
+export const RichTextEditor = forwardRef<
+  RichTextEditorHandle,
+  RichTextEditorProps
+>(function RichTextEditor(
+  {
+    id,
+    name,
+    value,
+    onChange,
+    placeholder,
+    disabled = false,
+    required,
+    minLength,
+    maxLength,
+    rows = 6,
+    footer,
+    overlay,
+    "aria-label": ariaLabel,
+    className = "",
+    ...rest
+  },
+  ref,
+) {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+    getTextarea: () => textareaRef.current,
+  }));
 
   const applyWrap = useCallback(
     (kind: WrapKind) => {
@@ -145,24 +169,27 @@ export function RichTextEditor({
             onClick={() => applyWrap("link")}
           />
         </div>
-        <Textarea
-          {...rest}
-          ref={textareaRef}
-          id={fieldId}
-          name={name}
-          value={value}
-          required={required}
-          minLength={minLength}
-          maxLength={maxLength}
-          rows={rows}
-          disabled={disabled}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
-          className={`rounded-none border-0 shadow-none focus:border-transparent focus:ring-0 ${className}`}
-          onChange={(event) => onChange(event.target.value)}
-        />
+        <div className="relative">
+          <Textarea
+            {...rest}
+            ref={textareaRef}
+            id={fieldId}
+            name={name}
+            value={value}
+            required={required}
+            minLength={minLength}
+            maxLength={maxLength}
+            rows={rows}
+            disabled={disabled}
+            placeholder={placeholder}
+            aria-label={ariaLabel}
+            className={`rounded-none border-0 shadow-none focus:border-transparent focus:ring-0 ${className}`}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          {overlay}
+        </div>
       </div>
       {footer}
     </div>
   );
-}
+});
