@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
+import { buildCommentTree } from "@/lib/comments";
 import {
   severityClass,
   severityLabels,
@@ -14,8 +15,7 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
-import { CommentForm } from "@/components/comment-form";
-import { CommentBody } from "@/components/comment-body";
+import { CommentThread } from "@/components/comment-thread";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 export default async function BugDetailPage({
@@ -42,7 +42,16 @@ export default async function BugDetailPage({
         reporter: { select: { name: true, email: true, role: true } },
         assignee: { select: { id: true, name: true, role: true } },
         comments: {
-          include: { author: { select: { name: true, role: true } } },
+          include: {
+            author: { select: { name: true, role: true } },
+            parent: {
+              select: {
+                id: true,
+                body: true,
+                author: { select: { name: true, role: true } },
+              },
+            },
+          },
           orderBy: { createdAt: "asc" },
         },
         activities: {
@@ -56,7 +65,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -64,7 +73,10 @@ export default async function BugDetailPage({
     notFound();
   }
 
+  const isAssignee = !!userId && bug.assigneeId === userId;
+  const canUpdateStatus = canTriage || isAssignee;
   const voted = Array.isArray(bug.votes) && bug.votes.length > 0;
+  const commentTree = buildCommentTree(bug.comments);
 
   return (
     <div className="space-y-6">
@@ -166,13 +178,14 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      {canTriage ? (
+      {canUpdateStatus ? (
         <UpdateBugForm
           bugId={bug.id}
           status={bug.status}
           severity={bug.severity}
           assigneeId={bug.assigneeId}
           users={users}
+          canEditTriage={canTriage}
         />
       ) : null}
 
@@ -182,34 +195,12 @@ export default async function BugDetailPage({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Comments ({bug.comments.length})
         </h2>
-        <ul className="mt-4 space-y-4">
-          {bug.comments.length === 0 ? (
-            <li className="text-sm text-slate-500">
-              No comments yet. Add triage notes or reproduction steps below.
-            </li>
-          ) : (
-            bug.comments.map((comment) => (
-              <li
-                key={comment.id}
-                className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
-              >
-                <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <UserNameWithBadges
-                    name={comment.author.name}
-                    role={comment.author.role}
-                    showAuthor={comment.authorId === bug.reporterId}
-                    className="font-medium text-slate-700"
-                  />
-                  <time>{formatDate(comment.createdAt)}</time>
-                </div>
-                <CommentBody body={comment.body} />
-              </li>
-            ))
-          )}
-        </ul>
-        <div className="mt-6">
-          <CommentForm bugId={bug.id} users={users} />
-        </div>
+        <CommentThread
+          bugId={bug.id}
+          reporterId={bug.reporterId}
+          comments={commentTree}
+          users={users}
+        />
       </section>
     </div>
   );

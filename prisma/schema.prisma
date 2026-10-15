@@ -54,7 +54,24 @@ model User {
   assignedBugs  Bug[]         @relation("BugAssignee")
   comments      Comment[]
   votes         Vote[]
+<<<<<<< HEAD
   activities    BugActivity[]
+=======
+  passwordResetTokens PasswordResetToken[]
+}
+
+/// Single-use password reset tokens (~30 min TTL). Store only the SHA-256 hash.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+>>>>>>> endor/main
 }
 
 model Bug {
@@ -91,13 +108,19 @@ model BugActivity {
 }
 
 model Comment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   bugId     String
   authorId  String
+  parentId  String?
   body      String
-  createdAt DateTime @default(now())
-  bug       Bug      @relation(fields: [bugId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime  @default(now())
+  bug       Bug       @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id])
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
+
+  @@index([bugId])
+  @@index([parentId])
 }
 
 model Vote {
