@@ -1,26 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { formatUserLabel, isAdminRole } from "./roles";
+import { isAdmin, isSuperAdmin, roleLabels } from "./roles";
 
-describe("isAdminRole", () => {
+describe("isAdmin", () => {
   it("returns true for admin and super_admin", () => {
-    expect(isAdminRole("admin")).toBe(true);
-    expect(isAdminRole("super_admin")).toBe(true);
+    expect(isAdmin("admin")).toBe(true);
+    expect(isAdmin("super_admin")).toBe(true);
   });
 
   it("returns false for user and missing roles", () => {
-    expect(isAdminRole("user")).toBe(false);
-    expect(isAdminRole(null)).toBe(false);
-    expect(isAdminRole(undefined)).toBe(false);
+    expect(isAdmin("user")).toBe(false);
+    expect(isAdmin(null)).toBe(false);
+    expect(isAdmin(undefined)).toBe(false);
   });
 });
 
-describe("formatUserLabel", () => {
-  it("appends Admin for privileged roles", () => {
-    expect(formatUserLabel("Alice", "admin")).toBe("Alice (Admin)");
-    expect(formatUserLabel("Bob", "super_admin")).toBe("Bob (Admin)");
+describe("isSuperAdmin", () => {
+  it("returns true only for super_admin", () => {
+    expect(isSuperAdmin("super_admin")).toBe(true);
+    expect(isSuperAdmin("admin")).toBe(false);
+    expect(isSuperAdmin("user")).toBe(false);
   });
+});
 
-  it("leaves regular users unchanged", () => {
-    expect(formatUserLabel("Cara", "user")).toBe("Cara");
+describe("roleLabels", () => {
+  it("labels every role", () => {
+    expect(roleLabels.user).toBe("User");
+    expect(roleLabels.admin).toBe("Admin");
+    expect(roleLabels.super_admin).toBe("Super admin");
   });
 });

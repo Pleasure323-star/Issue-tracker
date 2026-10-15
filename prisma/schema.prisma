@@ -21,6 +21,10 @@ enum Status {
   closed
 }
 
+/// Application roles for RBAC.
+/// - user: default; report bugs, comment, vote
+/// - admin: triage bugs (status / severity / assignee)
+/// - super_admin: all admin powers + manage user roles
 enum Role {
   user
   admin

@@ -3,14 +3,14 @@ import { logoutAction } from "@/app/actions/auth";
 import { BrandLockup } from "@/components/brand-lockup";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { Button } from "@/components/ui/button";
-import type { UserRole } from "@/lib/roles";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 
 export function AppHeader({
   userName,
-  userRole,
+  role,
 }: {
   userName?: string | null;
-  userRole?: UserRole | null;
+  role?: AppRole | null;
 }) {
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -27,13 +27,21 @@ export function AppHeader({
             >
               New bug
             </Link>
+            {isSuperAdmin(role) ? (
+              <Link
+                href="/admin/users"
+                className="text-slate-600 hover:text-slate-900"
+              >
+                Admins
+              </Link>
+            ) : null}
           </nav>
         </div>
         <div className="flex items-center gap-3">
           {userName ? (
             <UserNameWithBadges
               name={userName}
-              role={userRole}
+              role={role}
               className="hidden max-w-[14rem] text-sm text-slate-500 sm:inline-flex"
             />
           ) : null}

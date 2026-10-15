@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentForm } from "@/components/comment-form";
+import { CommentBody } from "@/components/comment-body";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 export default async function BugDetailPage({
@@ -23,6 +25,14 @@ export default async function BugDetailPage({
   const { id } = await params;
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
+
+  const sessionUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canTriage = isAdmin(sessionUser?.role);
 
   const [bug, users] = await Promise.all([
     prisma.bug.findUnique({
@@ -41,7 +51,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true },
     }),
   ]);
 
@@ -97,6 +107,7 @@ export default async function BugDetailPage({
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                showAuthor
               />
             </dd>
           </div>
@@ -150,13 +161,15 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      <UpdateBugForm
-        bugId={bug.id}
-        status={bug.status}
-        severity={bug.severity}
-        assigneeId={bug.assigneeId}
-        users={users}
-      />
+      {canTriage ? (
+        <UpdateBugForm
+          bugId={bug.id}
+          status={bug.status}
+          severity={bug.severity}
+          assigneeId={bug.assigneeId}
+          users={users}
+        />
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -177,19 +190,18 @@ export default async function BugDetailPage({
                   <UserNameWithBadges
                     name={comment.author.name}
                     role={comment.author.role}
+                    showAuthor={comment.authorId === bug.reporterId}
                     className="font-medium text-slate-700"
                   />
                   <time>{formatDate(comment.createdAt)}</time>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-                  {comment.body}
-                </p>
+                <CommentBody body={comment.body} />
               </li>
             ))
           )}
         </ul>
         <div className="mt-6">
-          <CommentForm bugId={bug.id} />
+          <CommentForm bugId={bug.id} users={users} />
         </div>
       </section>
     </div>
