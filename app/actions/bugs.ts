@@ -12,6 +12,7 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import {
   resolveSessionUserId,
   SESSION_EXPIRED_MESSAGE,
@@ -32,6 +33,18 @@ async function requireUserId() {
     redirect("/login");
   }
   return resolved.userId;
+}
+
+async function requireAdminUserId() {
+  const userId = await requireUserId();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+  if (!user || !isAdmin(user.role)) {
+    return { error: "Only admins can triage bugs" } as const;
+  }
+  return { userId: user.id } as const;
 }
 
 export async function createBugAction(

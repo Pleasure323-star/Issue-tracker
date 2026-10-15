@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
 import {
-  authorBadgeClass,
   severityClass,
   severityLabels,
   statusClass,
@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentForm } from "@/components/comment-form";
+import { CommentBody } from "@/components/comment-body";
+import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 export default async function BugDetailPage({
   params,
@@ -25,14 +27,22 @@ export default async function BugDetailPage({
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
+  const sessionUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+    : null;
+  const canTriage = isAdmin(sessionUser?.role);
+
   const [bug, users] = await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
-        reporter: { select: { name: true, email: true } },
-        assignee: { select: { id: true, name: true } },
+        reporter: { select: { name: true, email: true, role: true } },
+        assignee: { select: { id: true, name: true, role: true } },
         comments: {
-          include: { author: { select: { name: true } } },
+          include: { author: { select: { name: true, role: true } } },
           orderBy: { createdAt: "asc" },
         },
         activities: {
@@ -98,14 +108,26 @@ export default async function BugDetailPage({
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
-            <dd className="flex flex-wrap items-center gap-2">
-              {bug.reporter.name}
-              <Badge className={authorBadgeClass}>Author</Badge>
+            <dd>
+              <UserNameWithBadges
+                name={bug.reporter.name}
+                role={bug.reporter.role}
+                showAuthor
+              />
             </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
-            <dd>{bug.assignee?.name ?? "Unassigned"}</dd>
+            <dd>
+              {bug.assignee ? (
+                <UserNameWithBadges
+                  name={bug.assignee.name}
+                  role={bug.assignee.role}
+                />
+              ) : (
+                "Unassigned"
+              )}
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
@@ -144,13 +166,15 @@ export default async function BugDetailPage({
         )}
       </section>
 
-      <UpdateBugForm
-        bugId={bug.id}
-        status={bug.status}
-        severity={bug.severity}
-        assigneeId={bug.assigneeId}
-        users={users}
-      />
+      {canTriage ? (
+        <UpdateBugForm
+          bugId={bug.id}
+          status={bug.status}
+          severity={bug.severity}
+          assigneeId={bug.assigneeId}
+          users={users}
+        />
+      ) : null}
 
       <ActivityTimeline activities={bug.activities} />
 
@@ -170,23 +194,21 @@ export default async function BugDetailPage({
                 className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
-                    {comment.author.name}
-                    {comment.authorId === bug.reporterId && (
-                      <Badge className={authorBadgeClass}>Author</Badge>
-                    )}
-                  </span>
+                  <UserNameWithBadges
+                    name={comment.author.name}
+                    role={comment.author.role}
+                    showAuthor={comment.authorId === bug.reporterId}
+                    className="font-medium text-slate-700"
+                  />
                   <time>{formatDate(comment.createdAt)}</time>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-                  {comment.body}
-                </p>
+                <CommentBody body={comment.body} />
               </li>
             ))
           )}
         </ul>
         <div className="mt-6">
-          <CommentForm bugId={bug.id} />
+          <CommentForm bugId={bug.id} users={users} />
         </div>
       </section>
     </div>
