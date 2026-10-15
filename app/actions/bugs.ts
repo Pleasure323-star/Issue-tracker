@@ -63,6 +63,7 @@ export async function createBugAction(
       title: parsed.data.title,
       description: parsed.data.description,
       severity: admin ? parsed.data.severity : "medium",
+      status: "open",
       proofLinks: parsed.data.proofLinks,
       reporterId: userId,
       assigneeId,
