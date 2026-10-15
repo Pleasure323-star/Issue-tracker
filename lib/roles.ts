@@ -1,6 +1,9 @@
 /** Matches Prisma `Role` enum — kept local so helpers stay edge-safe. */
 export type AppRole = "user" | "admin" | "super_admin";
 
+/** @deprecated Prefer `AppRole`. */
+export type UserRole = AppRole;
+
 export const ROLES = {
   user: "user",
   admin: "admin",
@@ -20,4 +23,15 @@ export function isAdmin(role: AppRole | null | undefined): boolean {
 
 export function isSuperAdmin(role: AppRole | null | undefined): boolean {
   return role === "super_admin";
+}
+
+/** Select/option label: name plus role when elevated. */
+export function formatUserLabel(
+  name: string,
+  role?: AppRole | null,
+): string {
+  if (role && role !== "user") {
+    return `${name} (${roleLabels[role]})`;
+  }
+  return name;
 }

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { isAdmin } from "@/lib/roles";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { formatDate } from "@/lib/format";
+import { stripMarkdown } from "@/lib/rich-text";
 import {
   severityClass,
   severityLabels,
@@ -15,7 +17,35 @@ import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentForm } from "@/components/comment-form";
 import { CommentBody } from "@/components/comment-body";
+import { RichText } from "@/components/rich-text";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const bug = await prisma.bug.findUnique({
+    where: { id },
+    select: { title: true, description: true },
+  });
+
+  if (!bug) {
+    return { title: "Bug not found" };
+  }
+
+  const description = stripMarkdown(bug.description).slice(0, 200);
+
+  return {
+    title: bug.title,
+    description,
+    openGraph: {
+      title: bug.title,
+      description,
+    },
+  };
+}
 
 export default async function BugDetailPage({
   params,
@@ -51,7 +81,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -97,9 +127,7 @@ export default async function BugDetailPage({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Description
         </h2>
-        <p className="mt-3 whitespace-pre-wrap text-slate-800">
-          {bug.description}
-        </p>
+        <RichText content={bug.description} />
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
