@@ -1,6 +1,5 @@
 import { AdminBadge } from "@/components/admin-badge";
-import { Badge } from "@/components/ui/badge";
-import { authorBadgeClass } from "@/lib/labels";
+import { AuthorBadge } from "@/components/author-badge";
 import { isAdmin, type AppRole } from "@/lib/roles";
 
 export function UserNameWithBadges({
@@ -15,9 +14,11 @@ export function UserNameWithBadges({
   className?: string;
 }) {
   return (
-    <span className={`inline-flex max-w-full flex-wrap items-center gap-1.5 ${className}`}>
+    <span
+      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 ${className}`}
+    >
       <span className="truncate">{name}</span>
-      {showAuthor ? <Badge className={authorBadgeClass}>Author</Badge> : null}
+      {showAuthor ? <AuthorBadge /> : null}
       {isAdmin(role) ? <AdminBadge /> : null}
     </span>
   );
