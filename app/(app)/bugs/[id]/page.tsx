@@ -10,6 +10,7 @@ import {
   statusClass,
   statusLabels,
 } from "@/lib/labels";
+import { ActivityTimeline } from "@/components/activity-timeline";
 import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
@@ -32,6 +33,10 @@ export default async function BugDetailPage({
         assignee: { select: { id: true, name: true } },
         comments: {
           include: { author: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+        activities: {
+          include: { actor: { select: { name: true } } },
           orderBy: { createdAt: "asc" },
         },
         votes: userId
@@ -146,6 +151,8 @@ export default async function BugDetailPage({
         assigneeId={bug.assigneeId}
         users={users}
       />
+
+      <ActivityTimeline activities={bug.activities} />
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
