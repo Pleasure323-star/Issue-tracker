@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { isAppRole } from "@/lib/roles";
 
 /**
  * Edge-safe Auth.js config (no Prisma / bcrypt).
@@ -29,11 +30,7 @@ export default {
         if (typeof id === "string" && id.length > 0) {
           session.user.id = id;
         }
-        if (token.role) {
-          session.user.role = token.role;
-        } else {
-          session.user.role = "user";
-        }
+        session.user.role = isAppRole(token.role) ? token.role : "user";
       }
       return session;
     },

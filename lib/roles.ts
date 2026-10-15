@@ -21,3 +21,22 @@ export function isAdmin(role: AppRole | null | undefined): boolean {
 export function isSuperAdmin(role: AppRole | null | undefined): boolean {
   return role === "super_admin";
 }
+
+/** Narrows an untrusted value (e.g. a JWT claim) to a known role. */
+export function isAppRole(value: unknown): value is AppRole {
+  return value === "user" || value === "admin" || value === "super_admin";
+}
+
+/**
+ * Alias kept for the form components, which describe a selectable user rather
+ * than the acting session user.
+ */
+export type UserRole = AppRole;
+
+/** "Alice Mentor (Admin)" — used by the assignee dropdowns. */
+export function formatUserLabel(
+  name: string,
+  role: AppRole | null | undefined,
+): string {
+  return role ? `${name} (${roleLabels[role]})` : name;
+}
