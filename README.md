@@ -18,15 +18,25 @@ Brand mark: `public/zedu-mark.svg`.
 
 https://contributors.zedu.chat/bug-tracker
 
+## Roles (RBAC)
+
+| Role | Capabilities |
+| --- | --- |
+| `user` | Report bugs, comment, vote |
+| `admin` | Everything `user` can do, plus triage (status / severity / assignee) |
+| `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
+
+Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
+
 ## Demo accounts (credentials seed)
 
 | Email | Password |
 | --- | --- |
-| `alice@zendor.dev` | `12345678` |
+| `alice@zendor.dev` | `12345678` (admin) |
 | `bob@zendor.dev` | `12345678` |
 | `cara@zendor.dev` | `12345678` |
 
-> Seed only on an **empty** database. Never reseed a DB that already has real signups.
+> Seed only on an **empty** database (or set `SEED_DEMO_DATA=true`). Never wipe a DB that already has real signups.
 
 ## Local setup
 

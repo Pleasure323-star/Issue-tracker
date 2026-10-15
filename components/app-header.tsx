@@ -28,7 +28,7 @@ export function AppHeader({
             </Link>
             {isSuperAdmin(role) ? (
               <Link
-                href="/admin"
+                href="/admin/users"
                 className="text-slate-600 hover:text-slate-900"
               >
                 Admins
