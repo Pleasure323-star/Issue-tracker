@@ -1,15 +1,32 @@
 # Zedu Bugs
 
-Team Zendor bug tracker — fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker) for HNG15 Task 1.
+Team **Zendor** fork of [`zeduchat/bug-tracker`](https://github.com/zeduchat/bug-tracker).
 
-**Live:** [contributors.zedu.chat/bug-tracker](https://contributors.zedu.chat/bug-tracker)
+Report bugs, filter the board, triage status/assignee, vote, and leave comments.
+
+Brand mark: `public/zedu-mark.svg`.
 
 ## Stack
 
-- Next.js App Router + React 19 + TypeScript + Tailwind CSS
+- Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
+- Auth.js v5 — email/password **and** optional Google OAuth
 - Prisma + PostgreSQL
-- Auth.js (credentials + optional Google)
-- Deployed via Coolify under `/bug-tracker`
+- pnpm
+- Docker / Coolify deploy (`basePath` `/bug-tracker`)
+
+## Live (upstream)
+
+https://contributors.zedu.chat/bug-tracker
+
+## Roles (RBAC)
+
+| Role | Capabilities |
+| --- | --- |
+| `user` | Report bugs, comment, vote |
+| `admin` | Everything `user` can do, plus triage (status / severity / assignee) |
+| `super_admin` | Everything `admin` can do, plus `/admin/users` management (promote users to admin) |
+
+Super-admin credentials come from `SUPER_ADMIN_*` env vars (see below). The seeder is idempotent and does not overwrite an existing super admin unless `SUPER_ADMIN_FORCE_UPDATE=true`.
 
 ## Demo accounts (credentials seed)
 
@@ -70,6 +87,8 @@ Google redirect URI: `{AUTH_URL}/api/auth/callback/google`
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md).
 
-## License
+PRs target **`main`** on `Zedu-Endor/bug-tracker` (this fork). Sync from `upstream` (`zeduchat/bug-tracker`) as needed.
 
-See [LICENSE](./LICENSE).
+## Archive
+
+Earlier standalone MVP history/issues origin: [`Zedu-Endor/bug-tracker-mvp`](https://github.com/Zedu-Endor/bug-tracker-mvp) (issues transferred here).
