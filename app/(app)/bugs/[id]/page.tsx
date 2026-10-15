@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { VoteButton } from "@/components/vote-button";
 import { UpdateBugForm } from "@/components/update-bug-form";
 import { CommentForm } from "@/components/comment-form";
+import { UserNameWithBadges } from "@/components/user-name-with-badges";
 
 export default async function BugDetailPage({
   params,
@@ -27,10 +28,10 @@ export default async function BugDetailPage({
     prisma.bug.findUnique({
       where: { id },
       include: {
-        reporter: { select: { name: true, email: true } },
-        assignee: { select: { id: true, name: true } },
+        reporter: { select: { name: true, email: true, role: true } },
+        assignee: { select: { id: true, name: true, role: true } },
         comments: {
-          include: { author: { select: { name: true } } },
+          include: { author: { select: { name: true, role: true } } },
           orderBy: { createdAt: "asc" },
         },
         votes: userId
@@ -40,7 +41,7 @@ export default async function BugDetailPage({
     }),
     prisma.user.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true },
     }),
   ]);
 
@@ -92,11 +93,25 @@ export default async function BugDetailPage({
         <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="font-medium text-slate-500">Reporter</dt>
-            <dd>{bug.reporter.name}</dd>
+            <dd>
+              <UserNameWithBadges
+                name={bug.reporter.name}
+                role={bug.reporter.role}
+              />
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Assignee</dt>
-            <dd>{bug.assignee?.name ?? "Unassigned"}</dd>
+            <dd>
+              {bug.assignee ? (
+                <UserNameWithBadges
+                  name={bug.assignee.name}
+                  role={bug.assignee.role}
+                />
+              ) : (
+                "Unassigned"
+              )}
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Created</dt>
@@ -159,9 +174,11 @@ export default async function BugDetailPage({
                 className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
               >
                 <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
-                    {comment.author.name}
-                  </span>
+                  <UserNameWithBadges
+                    name={comment.author.name}
+                    role={comment.author.role}
+                    className="font-medium text-slate-700"
+                  />
                   <time>{formatDate(comment.createdAt)}</time>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">

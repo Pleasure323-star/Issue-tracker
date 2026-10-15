@@ -16,6 +16,7 @@ async function main() {
       name: "Alice Mentor",
       email: "alice@zendor.dev",
       passwordHash,
+      role: "admin",
     },
   });
   const bob = await prisma.user.create({

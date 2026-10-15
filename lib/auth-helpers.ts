@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { resolveSessionUserId } from "@/lib/session-user";
 
 /**
@@ -21,5 +22,22 @@ export async function requireUser() {
     throw new Error("unreachable: signOut redirects");
   }
 
-  return { ...session.user, id: resolved.userId };
+  const dbUser = await prisma.user.findUnique({
+    where: { id: resolved.userId },
+    select: { id: true, name: true, email: true, role: true, image: true },
+  });
+
+  if (!dbUser) {
+    await signOut({ redirectTo: "/login" });
+    throw new Error("unreachable: signOut redirects");
+  }
+
+  return {
+    ...session.user,
+    id: dbUser.id,
+    name: dbUser.name,
+    email: dbUser.email,
+    image: dbUser.image,
+    role: dbUser.role,
+  };
 }
