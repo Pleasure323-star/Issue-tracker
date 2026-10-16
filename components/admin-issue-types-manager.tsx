@@ -215,8 +215,9 @@ export function AdminIssueTypesManager({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
+      {/* Scrolls sideways on narrow screens instead of clipping the Actions column (#211). */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="min-w-[40rem] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Type</th>
@@ -238,7 +239,7 @@ export function AdminIssueTypesManager({
                     {type.name}
                   </span>
                 </td>
-                <td className="max-w-xs px-4 py-3 text-slate-600">
+                <td className="min-w-[12rem] max-w-xs px-4 py-3 text-slate-600">
                   {type.description || <span className="text-slate-500">—</span>}
                 </td>
                 <td className="px-4 py-3">
@@ -252,10 +253,10 @@ export function AdminIssueTypesManager({
                     {type.isActive ? "Active" : "Inactive"}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                   {type._count.bugs} issue{type._count.bugs === 1 ? "" : "s"}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="whitespace-nowrap px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
@@ -265,7 +266,7 @@ export function AdminIssueTypesManager({
                     >
                       Edit
                     </button>
-                    <span>·</span>
+                    <span aria-hidden="true">·</span>
                     <button
                       type="button"
                       disabled={pending}
@@ -274,7 +275,7 @@ export function AdminIssueTypesManager({
                     >
                       {type.isActive ? "Deactivate" : "Activate"}
                     </button>
-                    <span>·</span>
+                    <span aria-hidden="true">·</span>
                     <button
                       type="button"
                       disabled={pending}
