@@ -23,6 +23,7 @@ import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
 import { createEmptyVoterSummary } from "@/lib/voters";
+import { getActiveIssueTypes } from "@/lib/issue-types";
 import { VoterAvatars } from "@/components/voter-avatars";
 import {
   bugSortDescriptions,
@@ -39,6 +40,7 @@ type SearchParams = Promise<{
   q?: string | string[];
   status?: string | string[];
   severity?: string | string[];
+  tag?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -79,6 +81,13 @@ export default async function BugsPage({
   const deletedParam = toSingleQueryParam(params.deleted);
   const isDeletedView = canDelete && deletedParam === "true";
 
+  // Tags are issue types (e.g. Design, Marketing). Resolve tag names to ids.
+  const issueTypes = await getActiveIssueTypes();
+  const tagParam = toSingleQueryParam(params.tag);
+  const tagNames = tagParam
+    ? tagParam.split(",").map((name) => name.trim()).filter(Boolean)
+    : [];
+
   const currentSort = parseBugSort(sortParam);
   const where: Prisma.BugWhereInput = {
     isDeleted: isDeletedView,
@@ -89,6 +98,14 @@ export default async function BugsPage({
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
+  }
+  if (tagNames.length) {
+    const tagIds = tagNames
+      .map((name) => issueTypes.find((t) => t.name.toLowerCase() === name.toLowerCase())?.id)
+      .filter((id): id is string => Boolean(id));
+    if (tagIds.length) {
+      where.typeId = { in: tagIds };
+    }
   }
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
@@ -169,7 +186,10 @@ export default async function BugsPage({
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
-        <BugFilters />
+        <BugFilters
+          issueTypes={issueTypes}
+          defaultTags={tagNames}
+        />
       </Suspense>
 
       {bugs.length === 0 ? (
@@ -354,6 +374,7 @@ export default async function BugsPage({
           queryParams={{
             ...(statusParam ? { status: statusParam } : {}),
             ...(severityParam ? { severity: severityParam } : {}),
+            ...(tagParam ? { tag: tagParam } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
             sort: sortParam,
