@@ -1,5 +1,7 @@
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { LoginForm } from "@/components/login-form";
+import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
@@ -18,6 +20,7 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
+  const passwordAuthEnabled = isPasswordAuthEnabled();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-16">
@@ -27,7 +30,9 @@ export default async function LoginPage({
           Sign in to Zedu Issues
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Sign in with your Google account to report, vote, and track issues.
+          {passwordAuthEnabled
+            ? "Sign in to report, vote, and track issues."
+            : "Sign in with your Google account to report, vote, and track issues."}
         </p>
 
         {params.error ? (
@@ -42,7 +47,11 @@ export default async function LoginPage({
         ) : null}
 
         <div className="mt-6">
-          <GoogleSignInButton callbackUrl={callbackUrl} />
+          {passwordAuthEnabled ? (
+            <LoginForm callbackUrl={callbackUrl} googleEnabled />
+          ) : (
+            <GoogleSignInButton callbackUrl={callbackUrl} />
+          )}
         </div>
       </div>
     </main>
