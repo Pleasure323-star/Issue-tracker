@@ -21,6 +21,7 @@ import {
   MAX_COMMENT_DEPTH,
   commentDepth,
 } from "@/lib/comments";
+import { stripMarkdown } from "@/lib/rich-text";
 import {
   commentSchema,
   createBugSchema,
@@ -303,7 +304,7 @@ export async function addCommentAction(
         summary: commentedSummary(parsed.data.body),
         metadata: {
           field: "comment",
-          commentPreview: parsed.data.body.slice(0, 120),
+          commentPreview: stripMarkdown(parsed.data.body).slice(0, 120),
         } as Prisma.InputJsonValue,
       },
     });

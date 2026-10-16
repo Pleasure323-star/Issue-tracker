@@ -1,5 +1,6 @@
 import type { ActivityType, Prisma, Severity, Status } from "@prisma/client";
 import { severityLabel, statusLabel } from "@/lib/labels";
+import { stripMarkdown } from "@/lib/rich-text";
 
 export type ActivityMetadata = {
   field?: string;
@@ -54,7 +55,7 @@ export function assigneeChangedSummary(
 }
 
 export function commentedSummary(body: string): string {
-  return `added a comment: “${truncate(body, 120)}”`;
+  return `added a comment: “${truncate(stripMarkdown(body), 120)}”`;
 }
 
 export function editedSummary(fields: string[]): string {

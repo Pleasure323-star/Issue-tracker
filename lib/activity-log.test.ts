@@ -46,6 +46,12 @@ describe("activity summary helpers", () => {
     expect(commentedSummary(long)).toContain("…");
   });
 
+  it("strips markdown formatting and mentions in comment summary", () => {
+    expect(
+      commentedSummary("**Fixed** by @[someone](clx123456789)"),
+    ).toBe('added a comment: “Fixed by @someone”');
+  });
+
   it("summarizes edited fields", () => {
     expect(editedSummary([])).toBe("edited this ticket");
     expect(editedSummary(["title"])).toBe("edited title");
