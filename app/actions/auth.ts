@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import { auth, signIn, signOut } from "@/auth";
 import { ACTIVE_ROLE_COOKIE_NAME } from "@/lib/roles";
 import { isSuperAdminEmail } from "@/lib/super-admin";
-import { sendMail } from "@/lib/mail";
+import { canSendMail, sendMail } from "@/lib/mail";
 import {
   PASSWORD_RESET_TTL_MS,
   buildPasswordResetUrl,
@@ -31,6 +31,9 @@ import {
 
 const RESET_LINK_INVALID =
   "This reset link is invalid or has expired. Request a new one.";
+
+const RESET_EMAIL_UNAVAILABLE =
+  "Password reset emails aren't set up on this site yet. Ask an admin to reset your password.";
 
 const FORGOT_PASSWORD_SUCCESS =
   "If an account exists for that email, we've sent a password reset link.";
@@ -218,6 +221,13 @@ export async function forgotPasswordAction(
   }
 
   const email = parsed.data.email;
+
+  // Checked before looking anyone up, so every address gets the same answer
+  // (no account enumeration) and nobody is told a link is on its way when it
+  // can't be sent (#210).
+  if (!canSendMail()) {
+    return { error: RESET_EMAIL_UNAVAILABLE };
+  }
 
   try {
     const user = await prisma.user.findUnique({ where: { email } });
