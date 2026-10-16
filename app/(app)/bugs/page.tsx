@@ -41,6 +41,7 @@ type SearchParams = Promise<{
   status?: string | string[];
   severity?: string | string[];
   tag?: string | string[];
+  show?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -76,6 +77,7 @@ export default async function BugsPage({
   const qParam = toSingleQueryParam(params.q);
   const statusParam = toSingleQueryParam(params.status);
   const severityParam = toSingleQueryParam(params.severity);
+  const showParam = toSingleQueryParam(params.show);
   const sortParam = toSingleQueryParam(params.sort);
   const pageParam = toSingleQueryParam(params.page);
   const deletedParam = toSingleQueryParam(params.deleted);
@@ -98,6 +100,11 @@ export default async function BugsPage({
   }
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
+  }
+  if (showParam === "assigned" && userId) {
+    where.assigneeId = userId;
+  } else if (showParam === "reported" && userId) {
+    where.reporterId = userId;
   }
   if (tagNames.length) {
     const tagIds = tagNames
@@ -374,6 +381,7 @@ export default async function BugsPage({
           queryParams={{
             ...(statusParam ? { status: statusParam } : {}),
             ...(severityParam ? { severity: severityParam } : {}),
+            ...(showParam ? { show: showParam } : {}),
             ...(tagParam ? { tag: tagParam } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),

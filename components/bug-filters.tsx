@@ -48,6 +48,24 @@ export function BugFilters({
       <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
         <div className="w-full sm:w-auto min-w-[140px]">
           <label
+            htmlFor="show"
+            className="mb-1 block text-xs font-medium text-slate-600"
+          >
+            Show
+          </label>
+          <select
+            id="show"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:w-auto"
+            value={params.get("show") ?? ""}
+            onChange={(event) => update("show", event.target.value)}
+          >
+            <option value="">All issues</option>
+            <option value="assigned">Assigned to me</option>
+            <option value="reported">Reported by me</option>
+          </select>
+        </div>
+        <div className="w-full sm:w-auto min-w-[140px]">
+          <label
             htmlFor="status"
             className="mb-1 block text-xs font-medium text-slate-600"
           >

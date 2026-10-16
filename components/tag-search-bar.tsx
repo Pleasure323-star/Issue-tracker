@@ -173,12 +173,6 @@ export function TagSearchBar({
 
   return (
     <div ref={containerRef} className={`col-span-full min-w-0 ${className}`}>
-      <label
-        htmlFor="tag-search"
-        className="mb-1 block text-center text-xs font-medium text-slate-600"
-      >
-        Search or tag
-      </label>
       <div className="relative mx-auto max-w-sm">
         <input
           ref={inputRef}
