@@ -76,6 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
@@ -137,6 +138,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.id = dbUser.id;
             token.sub = dbUser.id;
             token.role = dbUser.role;
+            token.sv = dbUser.sessionVersion;
             return token;
           }
         }
@@ -148,6 +150,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       if (user?.role) {
         token.role = user.role;
+      }
+      if (typeof user?.sessionVersion === "number") {
+        token.sv = user.sessionVersion;
       }
       return token;
     },

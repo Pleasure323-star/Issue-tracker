@@ -29,7 +29,8 @@ export async function consumeResetToken(
 
   await tx.user.update({
     where: { id: userId },
-    data: { passwordHash },
+    // Bumping the version signs out every existing session for this user (#208).
+    data: { passwordHash, sessionVersion: { increment: 1 } },
   });
   await tx.passwordResetToken.deleteMany({
     where: { userId, id: { not: tokenId } },

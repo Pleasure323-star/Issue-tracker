@@ -35,6 +35,12 @@ describe("consumeResetToken", () => {
     });
   });
 
+  it("invalidates existing sessions by bumping sessionVersion (#208)", async () => {
+    const tx = fakeTx(1);
+    await consumeResetToken(tx as never, args);
+    expect(tx.user.update.mock.calls[0][0].data.sessionVersion).toEqual({ increment: 1 });
+  });
+
   it("changes nothing when another request already claimed the token", async () => {
     const tx = fakeTx(0);
     await expect(consumeResetToken(tx as never, args)).resolves.toBe(false);
