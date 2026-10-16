@@ -8,6 +8,7 @@ import authConfig from "@/auth.config";
 import { cleanEnv } from "@/lib/env-clean";
 import { isSuperAdminEmail } from "@/lib/super-admin";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
+import { checkAuthRateLimit, clientIpFrom } from "@/lib/rate-limit";
 
 const googleClientId = cleanEnv(
   process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID,
@@ -49,12 +50,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!isPasswordAuthEnabled()) {
           return null;
         }
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {
+          return null;
+        }
+
+        // Per-email and per-IP limit on password attempts (#207). Every
+        // password sign-in comes through here, whichever entry point it used.
+        const limit = checkAuthRateLimit("login", {
+          email: parsed.data.email,
+          ip: request?.headers ? clientIpFrom(request.headers) : null,
+        });
+        if (!limit.allowed) {
+          console.warn("[auth] password sign-in rate limited", { email: parsed.data.email });
           return null;
         }
 

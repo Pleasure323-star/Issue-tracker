@@ -3,7 +3,7 @@
 import { AuthError } from "next-auth";
 import { hash } from "bcryptjs";
 import { Prisma } from "@prisma/client";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth, signIn, signOut } from "@/auth";
@@ -24,6 +24,12 @@ import {
 } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
+  RATE_LIMIT_MESSAGE,
+  checkAuthRateLimit,
+  clientIpFrom,
+  type AuthRateLimitAction,
+} from "@/lib/rate-limit";
+import {
   forgotPasswordSchema,
   resetPasswordSchema,
   signupSchema,
@@ -35,13 +41,30 @@ const RESET_LINK_INVALID =
 const RESET_EMAIL_UNAVAILABLE =
   "Password reset emails aren't set up on this site yet. Ask an admin to reset your password.";
 
+/**
+ * Shown when sign-up hits an existing email. It doesn't confirm that an
+ * account exists (#207); a full fix would need email verification.
+ */
+const SIGNUP_FAILED =
+  "We couldn't create an account with those details. If you already have one, sign in or reset your password.";
+
+/** Returns an error result when this auth attempt is over its rate limit (#207). */
+async function authRateLimited(
+  action: AuthRateLimitAction,
+  email: string | null,
+): Promise<{ error: string } | null> {
+  const ip = clientIpFrom(await headers());
+  const result = checkAuthRateLimit(action, { email, ip });
+  return result.allowed ? null : { error: RATE_LIMIT_MESSAGE };
+}
+
 const FORGOT_PASSWORD_SUCCESS =
   "If an account exists for that email, we've sent a password reset link.";
 
 export async function loginAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<{ error?: string } | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -49,6 +72,9 @@ export async function loginAction(
 
   const callbackUrl = safeCallbackUrl(formData.get("callbackUrl"));
 
+  // Rate limited inside the Credentials provider's authorize() (auth.ts), which
+  // every password sign-in passes through, including direct POSTs to
+  // /api/auth/callback/credentials (#207).
   try {
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
@@ -69,7 +95,7 @@ export async function loginAction(
 export async function signupAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<{ error?: string } | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -87,6 +113,10 @@ export async function signupAction(
   }
 
   const { name, email, password } = parsed.data;
+
+  const limited = await authRateLimited("signup", email);
+  if (limited) return limited;
+
   const passwordHash = await hash(password, 10);
   const callbackUrl = safeCallbackUrl(formData.get("callbackUrl"));
 
@@ -99,7 +129,7 @@ export async function signupAction(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      return { error: "An account with this email already exists" };
+      return { error: SIGNUP_FAILED };
     }
     throw error;
   }
@@ -206,7 +236,7 @@ export async function googleSignInAction(
 export async function forgotPasswordAction(
   _prev: { error?: string; success?: string } | undefined,
   formData: FormData,
-) {
+): Promise<{ error?: string; success?: string }> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -221,6 +251,9 @@ export async function forgotPasswordAction(
   }
 
   const email = parsed.data.email;
+
+  const limited = await authRateLimited("forgotPassword", email);
+  if (limited) return limited;
 
   // Checked before looking anyone up, so every address gets the same answer
   // (no account enumeration) and nobody is told a link is on its way when it
@@ -271,7 +304,7 @@ export async function forgotPasswordAction(
 export async function resetPasswordAction(
   _prev: { error?: string } | undefined,
   formData: FormData,
-) {
+): Promise<{ error?: string } | undefined> {
   // Server actions stay callable even when no UI renders them.
   if (!isPasswordAuthEnabled()) {
     return { error: PASSWORD_AUTH_DISABLED_MESSAGE };
@@ -289,6 +322,10 @@ export async function resetPasswordAction(
 
   const { token, password } = parsed.data;
   const tokenHash = hashResetToken(token);
+
+  // No email here; the token hash stands in as the per-target key.
+  const limited = await authRateLimited("resetPassword", `token:${tokenHash}`);
+  if (limited) return limited;
 
   const record = await prisma.passwordResetToken.findUnique({
     where: { tokenHash },

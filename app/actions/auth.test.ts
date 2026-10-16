@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(),
+  headers: vi.fn(async () => new Headers({ "x-forwarded-for": "203.0.113.7" })),
+}));
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((to: string) => {
     throw Object.assign(new Error("NEXT_REDIRECT"), { to });
@@ -24,10 +27,11 @@ vi.mock("@/lib/prisma", () => ({
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/mail";
 import { hashResetToken } from "@/lib/password-reset";
-import { forgotPasswordAction, resetPasswordAction } from "./auth";
+import { resetRateLimits } from "@/lib/rate-limit";
+import { forgotPasswordAction, resetPasswordAction, signupAction } from "./auth";
 
 const db = prisma as unknown as {
-  user: { findUnique: ReturnType<typeof vi.fn> };
+  user: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
   passwordResetToken: { findUnique: ReturnType<typeof vi.fn> };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -40,6 +44,7 @@ function form(values: Record<string, string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetRateLimits();
   vi.stubEnv("AUTH_PASSWORD_LOGIN", "true");
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -115,5 +120,31 @@ describe("resetPasswordAction (#208, #209)", () => {
 
     await expect(resetPasswordAction(undefined, input)).rejects.toMatchObject({ to: "/login" });
     expect(userUpdate.mock.calls[0][0].data.sessionVersion).toEqual({ increment: 1 });
+  });
+});
+
+describe("auth rate limiting and enumeration (#207)", () => {
+  it("blocks a fourth reset request for the same email", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    db.user.findUnique.mockResolvedValue(null);
+    for (let i = 0; i < 3; i++) {
+      const ok = await forgotPasswordAction(undefined, form({ email: "bob@zendor.dev" }));
+      expect(ok.success).toBeDefined();
+    }
+    const blocked = await forgotPasswordAction(undefined, form({ email: "bob@zendor.dev" }));
+    expect(blocked.error).toMatch(/too fast/);
+  });
+
+  it("doesn't confirm that an email already has an account", async () => {
+    const { Prisma } = await import("@prisma/client");
+    db.user.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint", { code: "P2002", clientVersion: "6" }),
+    );
+    const result = await signupAction(
+      undefined,
+      form({ name: "Bob", email: "bob@zendor.dev", password: "Passw0rd!234", confirmPassword: "Passw0rd!234" }),
+    );
+    expect(result?.error).not.toMatch(/already exists/);
+    expect(result?.error).toMatch(/couldn't create an account/);
   });
 });
