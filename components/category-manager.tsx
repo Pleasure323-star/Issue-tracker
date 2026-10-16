@@ -116,7 +116,11 @@ export function CategoryManager({
         </p>
 
         <form onSubmit={handleCreate} className="mt-4 flex flex-wrap gap-3">
+          <label htmlFor="new-platform-name" className="sr-only">
+            Platform name
+          </label>
           <Input
+            id="new-platform-name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Platform name (e.g. Cloud)"
@@ -170,8 +174,13 @@ export function CategoryManager({
                   <div className="flex flex-1 items-center gap-3">
                     {isEditing ? (
                       <div className="flex items-center gap-2">
+                        <label htmlFor={`rename-platform-${cat.id}`} className="sr-only">
+                          {`New name for ${cat.name}`}
+                        </label>
                         <Input
+                          id={`rename-platform-${cat.id}`}
                           value={editingName}
+                          placeholder={cat.name}
                           onChange={(e) => setEditingName(e.target.value)}
                           className="h-8 w-48 text-sm"
                           disabled={pending}
