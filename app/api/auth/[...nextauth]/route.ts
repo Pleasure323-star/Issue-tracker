@@ -1,7 +1,11 @@
 import { handlers } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
 import { getSiteUrl } from "@/lib/site-url";
-import { popRecentAuthError } from "@/lib/auth-diagnostics";
+import {
+  authDiagnosticsEnabled,
+  configurationErrorLoginUrl,
+  popRecentAuthError,
+} from "@/lib/auth-diagnostics";
 import { NextRequest } from "next/server";
 
 function withNormalizedRequest(req: NextRequest): NextRequest {
@@ -70,7 +74,12 @@ function normalizeResponse(response: Response): Response {
   }
 
   const recentReason = popRecentAuthError();
-  if (location.includes("error=") && recentReason && targetUrl) {
+  if (
+    location.includes("error=") &&
+    recentReason &&
+    targetUrl &&
+    authDiagnosticsEnabled()
+  ) {
     targetUrl.searchParams.set("reason", recentReason);
   }
 
@@ -106,11 +115,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("[auth] GET handler threw exception:", error);
     const reason = error instanceof Error ? error.message : String(error);
-    const redirectUrl = new URL(
-      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
-      req.nextUrl.origin,
+    return Response.redirect(
+      configurationErrorLoginUrl(req.nextUrl.origin, BASE_PATH, reason),
     );
-    return Response.redirect(redirectUrl.toString());
   }
 }
 
@@ -121,10 +128,8 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[auth] POST handler threw exception:", error);
     const reason = error instanceof Error ? error.message : String(error);
-    const redirectUrl = new URL(
-      `${BASE_PATH}/login?error=Configuration&reason=${encodeURIComponent(reason)}`,
-      req.nextUrl.origin,
+    return Response.redirect(
+      configurationErrorLoginUrl(req.nextUrl.origin, BASE_PATH, reason),
     );
-    return Response.redirect(redirectUrl.toString());
   }
 }

@@ -65,3 +65,26 @@ export function popRecentAuthError(maxAgeMs = 15000): string | null {
   lastError = null;
   return detail;
 }
+
+/**
+ * Raw auth error details may contain server paths, database hosts or another
+ * user's error, so they are only put in URLs or shown on the login page
+ * outside production (#118). Server logs always keep the full detail.
+ */
+export function authDiagnosticsEnabled(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+/** `/login?error=Configuration`, plus `reason` only when diagnostics are enabled. */
+export function configurationErrorLoginUrl(
+  origin: string,
+  basePath: string,
+  reason: string,
+): string {
+  const url = new URL(`${basePath}/login`, origin);
+  url.searchParams.set("error", "Configuration");
+  if (authDiagnosticsEnabled()) {
+    url.searchParams.set("reason", reason);
+  }
+  return url.toString();
+}

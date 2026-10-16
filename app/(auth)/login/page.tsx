@@ -1,5 +1,6 @@
 import { BrandLockup } from "@/components/brand-lockup";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { authDiagnosticsEnabled } from "@/lib/auth-diagnostics";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
@@ -37,7 +38,7 @@ export default async function LoginPage({
                 ? "Unable to complete Google sign-in. Please try again."
                 : "Authentication failed. Please try again."}
             </p>
-            {params.reason ? (
+            {params.reason && authDiagnosticsEnabled() ? (
               <p className="mt-1.5 font-mono text-xs text-red-800 break-words">
                 Diagnostic: {params.reason}
               </p>
