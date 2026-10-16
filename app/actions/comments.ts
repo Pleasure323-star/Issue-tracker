@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { commentSchema } from "@/lib/validations/bug";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -14,7 +15,8 @@ import {
   canEditComment,
   COMMENT_ERRORS,
 } from "@/lib/comment-permissions";
-import { commentDeletedSummary } from "@/lib/activity-log";
+import { commentDeletedSummary, commentPreview } from "@/lib/activity-log";
+import { notifyLater } from "@/lib/notify";
 
 export type CommentActionResult = { error?: string; ok?: boolean };
 
@@ -26,9 +28,10 @@ async function loadComment(commentId: unknown) {
       id: true,
       bugId: true,
       authorId: true,
+      body: true,
       deletedAt: true,
       author: { select: { name: true } },
-      bug: { select: { isDeleted: true } },
+      bug: { select: { isDeleted: true, title: true } },
     },
   });
 }
@@ -66,6 +69,20 @@ export async function updateCommentAction(
     where: { id: comment.id },
     data: { body, editedAt: new Date() },
   });
+
+  const newlyMentioned = newlyMentionedUserIds(comment.body, body);
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: user.id,
+      actorName: user.name ?? "Someone",
+      bugId: comment.bugId,
+      bugTitle: comment.bug.title,
+      place: "comment",
+      recipientIds: newlyMentioned,
+      excerpt: commentPreview(body),
+    });
+  }
 
   revalidatePath(`/bugs/${comment.bugId}`);
   return { ok: true };
