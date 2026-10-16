@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { absoluteUrl } from "./site-url";
 
 export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 
@@ -10,15 +11,10 @@ export function hashResetToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/** App origin including basePath (`/bug-tracker`). */
-export function appBaseUrl() {
-  const raw =
-    process.env.AUTH_URL ||
-    process.env.NEXTAUTH_URL ||
-    "http://localhost:3001/bug-tracker";
-  return raw.replace(/\/$/, "");
-}
-
+/**
+ * Absolute reset link under the app's basePath. Uses `absoluteUrl` because
+ * AUTH_URL / NEXTAUTH_URL end in `/api/auth`, which must not prefix the page.
+ */
 export function buildPasswordResetUrl(rawToken: string) {
-  return `${appBaseUrl()}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  return absoluteUrl(`/reset-password?token=${encodeURIComponent(rawToken)}`);
 }
