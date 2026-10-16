@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
 import { AppHeader } from "@/components/app-header";
+import { prisma } from "@/lib/prisma";
 import { REPORT_FORM_URL } from "@/lib/report-form";
 
 export default async function AppLayout({
@@ -29,6 +30,9 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
+  const unreadCount = await prisma.notification.count({
+    where: { userId: user.id, readAt: null },
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -37,6 +41,7 @@ export default async function AppLayout({
         role={user.role}
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
+        unreadCount={unreadCount}
       />
       <main
         className={`mx-auto w-full max-w-5xl flex-1 px-3.5 pt-5 sm:px-4 sm:pt-8 ${
