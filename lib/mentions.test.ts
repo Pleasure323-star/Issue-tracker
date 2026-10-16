@@ -5,6 +5,7 @@ import {
   formatMention,
   getMentionQuery,
   insertMention,
+  resolveMentions,
   tokenizeMentions,
 } from "./mentions";
 
@@ -111,5 +112,36 @@ describe("insertMention", () => {
     const result = insertMention(value, mention, value.length, "Alice", aliceId);
     expect(result.value).toBe(`Hi @[Alice](${aliceId}) `);
     expect(result.caret).toBe(result.value.length);
+  });
+});
+
+describe("resolveMentions", () => {
+  const users = new Map([["clxreal0001", "Alice Real"]]);
+
+  it("keeps mentions of real users, using their current name", () => {
+    expect(resolveMentions("Hi @[Alice Real](clxreal0001)", users)).toBe(
+      "Hi @[Alice Real](clxreal0001)",
+    );
+  });
+
+  it("replaces a typed name on a real user's tag with their real name", () => {
+    expect(resolveMentions("Hi @[Mark Essien](clxreal0001)", users)).toBe(
+      "Hi @[Alice Real](clxreal0001)",
+    );
+  });
+
+  it("turns tags for unknown ids into plain text", () => {
+    const body = "Hi @[Mark Essien](fake123)";
+    const resolved = resolveMentions(body, users);
+    expect(resolved).toBe("Hi @Mark Essien");
+    expect(tokenizeMentions(resolved)).toEqual([
+      { type: "text", value: "Hi @Mark Essien" },
+    ]);
+  });
+
+  it("leaves text without mention tags unchanged", () => {
+    expect(resolveMentions("No mentions here", users)).toBe(
+      "No mentions here",
+    );
   });
 });

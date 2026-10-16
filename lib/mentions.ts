@@ -27,6 +27,26 @@ export function extractMentionedUserIds(body: string): string[] {
 }
 
 /**
+ * Check mention tags against real users before a comment is saved. Tags for
+ * known users are rewritten with the user's current name (so a typed tag
+ * can't put a different name on someone's chip); tags whose id isn't a user
+ * become plain `@Name` text, which renders without a mention chip.
+ */
+export function resolveMentions(
+  body: string,
+  namesById: ReadonlyMap<string, string>,
+): string {
+  return body.replace(
+    new RegExp(MENTION_TAG_RE.source, "g"),
+    (_tag, rawName: string, rawId: string) => {
+      const userId = rawId.trim();
+      const realName = namesById.get(userId);
+      return realName ? formatMention(realName, userId) : `@${rawName.trim()}`;
+    },
+  );
+}
+
+/**
  * Split comment text into plain segments and mention tags.
  * Malformed `@…` sequences stay in text tokens and never throw.
  */

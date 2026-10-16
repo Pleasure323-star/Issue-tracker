@@ -27,6 +27,7 @@ import {
   updateBugSchema,
 } from "@/lib/validations/bug";
 import { calculateVoteChange } from "@/lib/voting";
+import { extractMentionedUserIds, resolveMentions } from "@/lib/mentions";
 import type { ActivityType, Prisma } from "@prisma/client";
 
 
@@ -256,6 +257,19 @@ export async function addCommentAction(
   });
   if (!bug) {
     return { error: "Bug not found" };
+  }
+
+  // Only real users keep a mention chip; everything below uses this body.
+  const mentionedIds = extractMentionedUserIds(parsed.data.body);
+  if (mentionedIds.length > 0) {
+    const mentioned = await prisma.user.findMany({
+      where: { id: { in: mentionedIds } },
+      select: { id: true, name: true },
+    });
+    parsed.data.body = resolveMentions(
+      parsed.data.body,
+      new Map(mentioned.map((user) => [user.id, user.name])),
+    );
   }
 
   const parentId = parsed.data.parentId;
