@@ -152,9 +152,6 @@ export default async function BugsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
-              {isDeletedView ? "Deleted Issues" : "Issues"}
-            </h1>
             {isDeletedView ? (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
                 Admin view
