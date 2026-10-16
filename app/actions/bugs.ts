@@ -52,6 +52,7 @@ import {
 } from "@/lib/ticket-editing";
 import { Prisma, type ActivityType } from "@prisma/client";
 import { notifyLater } from "@/lib/notify";
+import { ensureWatching } from "@/lib/watch";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
 import {
@@ -200,6 +201,12 @@ export async function createBugAction(
         reporterId: userId,
         assigneeId,
         categoryId,
+        // Reporter and assignee watch the issue from the start (#216).
+        watches: {
+          create: [...new Set([userId, assigneeId].filter((id): id is string => Boolean(id)))].map(
+            (watcherId) => ({ userId: watcherId }),
+          ),
+        },
         activities: {
           create: {
             actorId: userId,
@@ -468,6 +475,10 @@ export async function updateBugAction(
           data,
         });
       }
+      if (data.assigneeId) {
+        // The new assignee starts watching (#216).
+        await ensureWatching(tx, bugId, [data.assigneeId]);
+      }
       if (pending.length > 0) {
         await tx.bugActivity.createMany({
           data: activityCreateData(
@@ -617,18 +628,19 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    select: { id: true, isDeleted: true, title: true },
+    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
   }
 
   const parentId = parsed.data.parentId;
+  let parentAuthorId: string | null = null;
 
   if (parentId) {
     const parent = await prisma.comment.findUnique({
       where: { id: parentId },
-      select: { id: true, bugId: true, parentId: true, deletedAt: true },
+      select: { id: true, bugId: true, parentId: true, deletedAt: true, authorId: true },
     });
 
     if (!parent || parent.bugId !== bugId) {
@@ -637,6 +649,7 @@ export async function addCommentAction(
     if (parent.deletedAt) {
       return { error: "You can't reply to a deleted comment" };
     }
+    parentAuthorId = parent.authorId;
 
     const threadComments = await prisma.comment.findMany({
       where: { bugId },
@@ -656,7 +669,7 @@ export async function addCommentAction(
 
   const normalizedBody = await normalizeMentionTags(parsed.data.body);
 
-  await prisma.$transaction(async (tx) => {
+  const commentId = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
       data: {
         bugId,
@@ -683,22 +696,36 @@ export async function addCommentAction(
       where: { id: bugId },
       data: { updatedAt: new Date() },
     });
+    // Commenting on an issue means you want to hear about replies (#216).
+    await ensureWatching(tx, bugId, [userId]);
+    return created.id;
   });
 
   const mentioned = extractMentionedUserIds(normalizedBody);
+  const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const actor = {
+    actorId: userId,
+    actorName: author?.name ?? "Someone",
+    bugId,
+    bugTitle: bug.title,
+  };
+  const excerpt = commentPreview(normalizedBody);
+  const events: NotificationEvent[] = [];
   if (mentioned.length > 0) {
-    const author = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-    notifyLater({
-      kind: "mentioned",
-      actorId: userId,
-      actorName: author?.name ?? "Someone",
-      bugId,
-      bugTitle: bug.title,
-      place: "comment",
-      recipientIds: mentioned,
-      excerpt: commentPreview(normalizedBody),
-    });
+    events.push({ ...actor, kind: "mentioned", place: "comment", recipientIds: mentioned, excerpt, commentId });
   }
+  // Watchers hear about every new comment (#216). The reporter and assignee
+  // are the default audience; delivery adds anyone else watching.
+  events.push({
+    ...actor,
+    kind: "comment_added",
+    commentId,
+    excerpt,
+    parentAuthorId,
+    recipientIds: [bug.reporterId, bug.assigneeId].filter((id): id is string => Boolean(id)),
+    excludeIds: mentioned,
+  });
+  notifyLater(...events);
 
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
@@ -1031,6 +1058,8 @@ export async function selfAssignBugAction(
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
       });
+      // Taking an issue means watching it (#216).
+      await ensureWatching(tx, bugId, [targetAssigneeId]);
 
       await tx.bugActivity.create({
         data: {
