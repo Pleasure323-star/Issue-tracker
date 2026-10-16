@@ -82,6 +82,8 @@ beforeEach(() => {
     fn({
       bug: { update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => (written = data)) },
       bugActivity: { createMany: vi.fn() },
+      // Used once assignees auto-watch issues (#216).
+      issueWatch: { createMany: vi.fn() },
     }),
   );
 });

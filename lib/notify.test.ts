@@ -4,7 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/mail", () => ({ sendMail: vi.fn(), canSendMail: vi.fn(() => true) }));
-vi.mock("@/lib/prisma", () => ({ prisma: { user: { findMany: vi.fn() } } }));
+// bug / notification / issueWatch are used once notifications also have an
+// in-app feed and watchers (#216); harmless before that.
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    user: { findMany: vi.fn() },
+    bug: { findUnique: vi.fn(async () => ({ isDeleted: false, assigneeId: null })) },
+    notification: { createMany: vi.fn() },
+    issueWatch: { findMany: vi.fn(async () => []) },
+  },
+}));
 
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/mail";
