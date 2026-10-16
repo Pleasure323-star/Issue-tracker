@@ -8,6 +8,7 @@ import {
   type MarkdownEditorHandle,
 } from "@/components/markdown-editor";
 import { MentionText } from "@/components/comment-body";
+import { AttachmentPicker } from "@/components/attachment-picker";
 
 type UserOption = { id: string; name: string };
 
@@ -32,6 +33,8 @@ export function CommentForm({
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Remounts the file picker after a successful post, clearing it (#215).
+  const [pickerKey, setPickerKey] = useState(0);
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
 
@@ -48,6 +51,7 @@ export function CommentForm({
           } else {
             setBody("");
             formRef.current?.reset();
+            setPickerKey((k) => k + 1);
             onSuccess?.();
           }
         });
@@ -89,6 +93,7 @@ export function CommentForm({
           ) : null
         }
       />
+      <AttachmentPicker key={pickerKey} disabled={pending} />
       {error ? (
         <p className="text-sm text-red-600" role="alert">
           {error}

@@ -15,6 +15,9 @@ import { CommentBody, MentionText } from "@/components/comment-body";
 import { CommentForm } from "@/components/comment-form";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
+import { AttachmentList, type AttachmentView } from "@/components/attachment-list";
+
+type AttachmentsByComment = Record<string, AttachmentView[]>;
 
 type UserOption = { id: string; name: string };
 
@@ -85,11 +88,13 @@ function CommentItem({
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
 }: {
   comment: CommentNode;
   bugId: string;
   reporterId: string;
   users: UserOption[];
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -168,7 +173,10 @@ function CommentItem({
                 onDone={() => setEditing(false)}
               />
             ) : (
-              <CommentBody body={comment.body} users={users} />
+              <>
+                <CommentBody body={comment.body} users={users} />
+                <AttachmentList attachments={attachmentsByComment[comment.id] ?? []} />
+              </>
             )}
           </>
         )}
@@ -239,6 +247,7 @@ function CommentItem({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
             />
           ))}
         </ul>
@@ -254,11 +263,14 @@ export function CommentThread({
   users,
   currentUserId,
   currentUserRole,
+  attachmentsByComment = {},
 }: {
   bugId: string;
   reporterId: string;
   comments: CommentNode[];
   users: UserOption[];
+  /** Files attached to each comment, by comment id (#215). */
+  attachmentsByComment?: AttachmentsByComment;
 } & ViewerProps) {
   return (
     <div className="mt-4 space-y-6">
@@ -277,6 +289,7 @@ export function CommentThread({
               users={users}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              attachmentsByComment={attachmentsByComment}
             />
           ))}
         </ul>
