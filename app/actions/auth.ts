@@ -16,6 +16,7 @@ import {
   createRawResetToken,
   hashResetToken,
 } from "@/lib/password-reset";
+import { consumeResetToken } from "@/lib/password-reset-consume";
 import { prisma } from "@/lib/prisma";
 import {
   isPasswordAuthEnabled,
@@ -27,6 +28,9 @@ import {
   resetPasswordSchema,
   signupSchema,
 } from "@/lib/validations/bug";
+
+const RESET_LINK_INVALID =
+  "This reset link is invalid or has expired. Request a new one.";
 
 const FORGOT_PASSWORD_SUCCESS =
   "If an account exists for that email, we've sent a password reset link.";
@@ -281,29 +285,22 @@ export async function resetPasswordAction(
   });
 
   if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
-    return {
-      error: "This reset link is invalid or has expired. Request a new one.",
-    };
+    return { error: RESET_LINK_INVALID };
   }
 
   const passwordHash = await hash(password, 10);
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: record.userId },
-      data: { passwordHash },
+  // Claim the token atomically so a raced second request can't reuse it (#209).
+  const consumed = await prisma.$transaction((tx) =>
+    consumeResetToken(tx, {
+      tokenId: record.id,
+      userId: record.userId,
+      passwordHash,
     }),
-    prisma.passwordResetToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    }),
-    prisma.passwordResetToken.deleteMany({
-      where: {
-        userId: record.userId,
-        id: { not: record.id },
-      },
-    }),
-  ]);
+  );
+  if (!consumed) {
+    return { error: RESET_LINK_INVALID };
+  }
 
   redirect("/login");
 }
