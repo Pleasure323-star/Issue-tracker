@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
   type ClipboardEvent,
+  type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -187,6 +188,7 @@ export const MarkdownEditor = forwardRef<
     onSelect,
     onPaste,
     onBlur,
+    onInvalid,
     ...rest
   },
   ref,
@@ -204,9 +206,28 @@ export const MarkdownEditor = forwardRef<
   );
 
   useImperativeHandle(ref, () => ({
-    focus: () => textareaRef.current?.focus(),
+    focus: () => {
+      setTab("write");
+      textareaRef.current?.focus();
+    },
     getTextarea: () => textareaRef.current,
   }));
+
+  const handleInvalid = (event: FormEvent<HTMLTextAreaElement>) => {
+    if (tab !== "write") {
+      event.preventDefault();
+      setTab("write");
+      const schedule =
+        typeof requestAnimationFrame !== "undefined"
+          ? requestAnimationFrame
+          : (cb: () => void) => setTimeout(cb, 0);
+      schedule(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.reportValidity?.();
+      });
+    }
+    onInvalid?.(event);
+  };
 
   const mention = useMentionSuggestions({
     users: users ?? [],
@@ -277,7 +298,7 @@ export const MarkdownEditor = forwardRef<
       const caret = textarea.selectionStart ?? 0;
       const next = `${value.slice(0, caret)}@${value.slice(caret)}`;
       applyTextChange(textarea, value, next, caret + 1, caret + 1, onChange);
-      mention.sync(next, caret + 1);
+      mention.sync(next, caret + 1, true);
       onKeyDown?.(event);
       return;
     }
@@ -316,8 +337,13 @@ export const MarkdownEditor = forwardRef<
 
   return (
     <div className="space-y-1.5">
-      <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20">
-        <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 px-1.5 py-1">
+      {/* #200: `overflow-hidden` on this shell clipped the absolutely-positioned
+          mention listbox, which sits directly below the textarea and so
+          rendered outside the shell - typing "@a" showed no dropdown at all.
+          The shell must not clip. Rounded corners are preserved by clipping
+          the toolbar row itself, which is the only child that needs it. */}
+      <div className="rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-600/20">
+        <div className="flex flex-wrap items-center gap-1 overflow-hidden rounded-t-lg border-b border-slate-200 bg-slate-50 px-1.5 py-1">
           <div
             className="flex items-center gap-1 border-r border-slate-200 pr-1.5"
             role="tablist"
@@ -383,11 +409,16 @@ export const MarkdownEditor = forwardRef<
             disabled={disabled}
             placeholder={placeholder}
             aria-label={ariaLabel}
-            className={`rounded-none border-0 shadow-none focus:border-transparent focus:ring-0 ${className}`}
+            className={`rounded-b-lg rounded-t-none border-0 shadow-none focus:border-transparent focus:ring-0 ${className}`}
             onChange={(event) => {
               const next = event.target.value;
               onChange(next);
-              mention.sync(next, event.target.selectionStart ?? next.length);
+              // #201: only real typing resets the highlighted suggestion.
+              mention.sync(
+                next,
+                event.target.selectionStart ?? next.length,
+                true,
+              );
             }}
             onKeyDown={handleKeyDown}
             onKeyUp={(event) => {
@@ -415,6 +446,7 @@ export const MarkdownEditor = forwardRef<
               mention.close();
               onBlur?.(event);
             }}
+            onInvalid={handleInvalid}
             onPaste={handlePaste}
             role={users?.length ? "combobox" : undefined}
             aria-autocomplete={users?.length ? "list" : undefined}
@@ -441,7 +473,7 @@ export const MarkdownEditor = forwardRef<
           ) : null}
         </div>
         {!writing ? (
-          <div className="max-h-96 overflow-y-auto px-3 py-2">
+          <div className="max-h-96 overflow-y-auto rounded-b-lg px-3 py-2">
             <RichText
               content={value}
               className="mt-0"
@@ -525,7 +557,7 @@ function MentionList({
     <ul
       id={listboxId}
       role="listbox"
-      className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+      className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
     >
       {suggestions.map((user, index) => {
         const active = index === activeIndex;
