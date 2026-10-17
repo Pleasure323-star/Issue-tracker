@@ -9,9 +9,7 @@ import { LocalTime } from "@/components/local-time";
 import { buildCommentTree } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
-  snippetText,
 } from "@/lib/link-preview";
-import { stripMarkdown } from "@/lib/rich-text";
 import { absoluteUrl } from "@/lib/site-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import {
@@ -52,11 +50,9 @@ export async function generateMetadata({
     where: { id },
     select: {
       title: true,
-      description: true,
       status: true,
       updatedAt: true,
       isDeleted: true,
-      reporter: { select: { name: true } },
     },
   });
 
@@ -68,11 +64,9 @@ export async function generateMetadata({
     };
   }
 
-  const description = bugLinkPreviewDescription({
-    status: bug.status,
-    authorName: bug.reporter.name,
-    description: stripMarkdown(bug.description),
-  });
+  // Title and status only: these tags are served to anyone with a preview-bot
+  // User-Agent, signed in or not (#117).
+  const description = bugLinkPreviewDescription({ status: bug.status });
   const canonical = absoluteUrl(`/bugs/${id}`);
   const image = absoluteUrl(SHARE_IMAGE.url);
   const title = bug.title;
@@ -88,7 +82,6 @@ export async function generateMetadata({
       url: canonical,
       type: "article",
       siteName: "Zedu Issues",
-      authors: [bug.reporter.name],
       modifiedTime: bug.updatedAt.toISOString(),
       images: [{ ...SHARE_IMAGE, url: image }],
     },
@@ -100,7 +93,6 @@ export async function generateMetadata({
     },
     other: {
       "bug:status": statusLabels[bug.status],
-      "bug:author": bug.reporter.name,
     },
   };
 }
@@ -110,18 +102,16 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const resolved = await resolveSessionUserId();
   const userId = "userId" in resolved ? resolved.userId : undefined;
 
-  // Unauthenticated crawlers only get a safe, limited preview (no comments,
-  // emails, or proof links). Interactive UI stays behind auth.
+  // Unauthenticated link-preview bots get the title and status only (#117).
+  // They're recognised by User-Agent, which anyone can fake, so nothing more
+  // sensitive (reporter, severity, description) may appear here.
   if (!userId) {
     const bug = await prisma.bug.findUnique({
       where: { id },
       select: {
         title: true,
-        description: true,
         status: true,
-        severity: true,
         isDeleted: true,
-        reporter: { select: { name: true } },
       },
     });
     if (!bug || bug.isDeleted) notFound();
@@ -134,14 +124,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <Badge className={statusClass[bug.status]}>
             {statusLabels[bug.status]}
           </Badge>
-          <Badge className={severityClass[bug.severity]}>
-            {severityLabels[bug.severity]}
-          </Badge>
         </div>
-        <p className="text-sm text-slate-600">
-          Reported by {bug.reporter.name}
-        </p>
-        <p className="text-slate-800">{snippetText(bug.description, 280)}</p>
         <Link
           href={`/login?callbackUrl=${encodeURIComponent(`/bugs/${id}`)}`}
           className="inline-flex text-sm font-medium text-teal-700 hover:underline"
@@ -320,6 +303,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 dislikeVoters={voterSummary.dislikes.voters}
                 size="md"
                 showAvatars
+                readOnly={bug.isDeleted}
               />
             </div>
           </div>
@@ -498,6 +482,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           users={users}
           currentUserId={user.id}
           currentUserRole={user.role}
+          readOnly={bug.isDeleted}
         />
       </section>
 

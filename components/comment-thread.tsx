@@ -24,6 +24,8 @@ type UserOption = { id: string; name: string };
 type ViewerProps = {
   currentUserId?: string;
   currentUserRole?: AppRole | null;
+  /** Deleted issues: show comments but no reply, edit, delete or new comment. */
+  readOnly?: boolean;
 };
 
 function CommentEditForm({
@@ -89,6 +91,7 @@ function CommentItem({
   currentUserId,
   currentUserRole,
   attachmentsByComment = {},
+  readOnly = false,
 }: {
   comment: CommentNode;
   bugId: string;
@@ -101,9 +104,11 @@ function CommentItem({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const isDeleted = Boolean(comment.deletedAt);
-  const canReply = comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
-  const canEdit = canEditComment(currentUserId, comment);
-  const canDelete = canDeleteComment(currentUserId, currentUserRole, comment);
+  const canReply =
+    !readOnly && comment.depth < MAX_COMMENT_DEPTH && !isDeleted;
+  const canEdit = !readOnly && canEditComment(currentUserId, comment);
+  const canDelete =
+    !readOnly && canDeleteComment(currentUserId, currentUserRole, comment);
 
   const handleDelete = () => {
     const own = comment.authorId === currentUserId;
@@ -248,6 +253,7 @@ function CommentItem({
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               attachmentsByComment={attachmentsByComment}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -264,6 +270,7 @@ export function CommentThread({
   currentUserId,
   currentUserRole,
   attachmentsByComment = {},
+  readOnly = false,
 }: {
   bugId: string;
   reporterId: string;
@@ -276,7 +283,9 @@ export function CommentThread({
     <div className="mt-4 space-y-6">
       {comments.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No comments yet. Add triage notes or reproduction steps below.
+          {readOnly
+            ? "No comments."
+            : "No comments yet. Add triage notes or reproduction steps below."}
         </p>
       ) : (
         <ul className="space-y-4">
@@ -290,11 +299,12 @@ export function CommentThread({
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               attachmentsByComment={attachmentsByComment}
+              readOnly={readOnly}
             />
           ))}
         </ul>
       )}
-      <CommentForm bugId={bugId} users={users} />
+      {readOnly ? null : <CommentForm bugId={bugId} users={users} />}
     </div>
   );
 }

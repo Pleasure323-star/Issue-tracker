@@ -108,9 +108,21 @@ export default async function BugsPage({
     totalCount,
   });
 
+  // Select only what the list shows: no `description` (up to 5000 chars
+  // each), which the list never displays (#217).
   const bugs = await prisma.bug.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      severity: true,
+      voteCount: true,
+      proofLinks: true,
+      isDeleted: true,
+      isBoosted: true,
+      createdAt: true,
+      updatedAt: true,
       type: { select: { name: true } },
       reporter: { select: { name: true, role: true } },
       assignee: { select: { name: true, role: true } },
@@ -132,7 +144,15 @@ export default async function BugsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
+            {/* The header already says "Zedu Issues", so the list's own title is
+                for screen readers only; "Deleted Issues" stays visible (#198). */}
+            <h1
+              className={
+                isDeletedView
+                  ? "text-xl sm:text-2xl font-semibold text-slate-900"
+                  : "sr-only"
+              }
+            >
               {isDeletedView ? "Deleted Issues" : "Issues"}
             </h1>
             {isDeletedView ? (
@@ -173,7 +193,11 @@ export default async function BugsPage({
       <Suspense
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
-        <BugFilters />
+        {/* #204: keyed on the search query so the uncontrolled input inside
+            BugFilters remounts (and re-reads its defaultValue) whenever the
+            URL changes - including via the browser Back button, which
+            previously left stale text in the box over an unfiltered list. */}
+        <BugFilters key={qParam ?? ""} />
       </Suspense>
 
       {bugs.length === 0 ? (
@@ -219,6 +243,7 @@ export default async function BugsPage({
                   likeCount={voterSummary.likes.count}
                   dislikeCount={voterSummary.dislikes.count}
                   size="sm"
+                  readOnly={isDeletedView}
                 />
                 <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
