@@ -7,6 +7,7 @@ import {
   type NotificationEvent,
   type PlannedNotification,
 } from "@/lib/notifications";
+import { shouldNotify } from "@/lib/notification-prefs";
 import { watchersFor } from "@/lib/watch";
 
 /**
@@ -46,16 +47,27 @@ async function recordInApp(event: NotificationEvent, planned: PlannedNotificatio
 /** Emails everyone who hasn't opted out, when email can be sent at all (#210). */
 async function sendEmails(planned: PlannedNotification[]) {
   if (!canSendMail()) return;
+  // Fetch the preferences rather than filtering in the query: which flag
+  // matters depends on the kind of each planned notification, and one event
+  // can produce several kinds across different recipients.
   const recipients = await prisma.user.findMany({
     where: { id: { in: planned.map((p) => p.userId) }, emailNotifications: true },
-    select: { id: true, email: true },
+    select: {
+      id: true,
+      email: true,
+      emailNotifications: true,
+      notifyMentions: true,
+      notifyAssignments: true,
+      notifyStatusChanges: true,
+    },
   });
-  const emailById = new Map(recipients.map((u) => [u.id, u.email]));
+  const byId = new Map(recipients.map((u) => [u.id, u]));
 
   await Promise.all(
     planned.map(async (n) => {
-      const to = emailById.get(n.userId);
-      if (!to) return;
+      const recipient = byId.get(n.userId);
+      if (!recipient || !shouldNotify(recipient, n.kind)) return;
+      const to = recipient.email;
       try {
         await sendMail({ to, subject: n.subject, text: n.text });
       } catch (error) {

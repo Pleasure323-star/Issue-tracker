@@ -28,6 +28,7 @@ import {
 import { MAX_COMMENT_DEPTH, commentDepth } from "@/lib/comments";
 import {
   extractMentionedUserIds,
+  newlyMentionedUserIds,
   normalizeMentions,
 } from "@/lib/mentions";
 import {
@@ -42,7 +43,11 @@ import {
   canRestoreTicket,
   TICKET_DELETION_ERRORS,
 } from "@/lib/ticket-deletion";
-import { canBoostTicket, TICKET_BOOST_ERRORS } from "@/lib/ticket-boosting";
+import {
+  canBoostTicket,
+  shouldUnboostOnStatusChange,
+  TICKET_BOOST_ERRORS,
+} from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
 import {
@@ -56,6 +61,8 @@ import { notifyLater } from "@/lib/notify";
 import { ensureWatching } from "@/lib/watch";
 import type { NotificationEvent } from "@/lib/notifications";
 import { getForeignKeyErrorMessage } from "@/lib/foreign-key-errors";
+import { parseAttachmentIds } from "@/lib/attachments";
+import { linkAttachments } from "@/lib/attachment-link";
 import {
   checkRateLimit,
   ACTION_RATE_LIMITS,
@@ -235,6 +242,13 @@ export async function createBugAction(
     throw error;
   }
 
+  // Files uploaded while writing the report (#215).
+  await linkAttachments(prisma, {
+    ids: parseAttachmentIds(formData.get("attachmentIds")),
+    uploaderId: userId,
+    bugId: bug.id,
+  });
+
   const events: NotificationEvent[] = [];
   const actor = { actorId: userId, actorName: user.name ?? "Someone", bugId: bug.id, bugTitle: bug.title };
   const mentioned = extractMentionedUserIds(description);
@@ -361,6 +375,8 @@ export async function updateBugAction(
     typeId?: string | null;
     assigneeId?: string | null;
     categoryId?: string | null;
+    isBoosted?: boolean;
+    boostedAt?: Date | null;
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
@@ -395,6 +411,23 @@ export async function updateBugAction(
         from: existing.status,
         to: data.status,
       },
+    });
+  }
+
+  // #256: a resolved or closed issue shouldn't stay pinned above open work.
+  if (
+    shouldUnboostOnStatusChange({
+      isBoosted: existing.isBoosted,
+      from: existing.status,
+      to: data.status,
+    })
+  ) {
+    data.isBoosted = false;
+    data.boostedAt = null;
+    pending.push({
+      type: "unboosted",
+      summary: unboostedSummary(),
+      metadata: { field: "isBoosted", to: "false" },
     });
   }
 
@@ -627,6 +660,22 @@ export async function editBugContentAction(
     });
   });
 
+  const newlyMentioned = newlyMentionedUserIds(
+    existing.description,
+    normalizedDescription,
+  );
+  if (newlyMentioned.length > 0) {
+    notifyLater({
+      kind: "mentioned",
+      actorId: userId,
+      actorName: user.name ?? "Someone",
+      bugId,
+      bugTitle: parsed.data.title,
+      place: "description",
+      recipientIds: newlyMentioned,
+    });
+  }
+
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -708,6 +757,13 @@ export async function addCommentAction(
         parentId: parentId ?? null,
       },
       select: { id: true },
+    });
+    // Files uploaded with the comment (#215).
+    await linkAttachments(tx, {
+      ids: parseAttachmentIds(formData.get("attachmentIds")),
+      uploaderId: userId,
+      bugId,
+      commentId: created.id,
     });
     await tx.bugActivity.create({
       data: {
