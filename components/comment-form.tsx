@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { addCommentAction } from "@/app/actions/bugs";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,9 +8,7 @@ import {
   type MarkdownEditorHandle,
 } from "@/components/markdown-editor";
 import { MentionText } from "@/components/comment-body";
-import { useFormDraft } from "@/components/use-form-draft";
-import { buildDraftKey } from "@/lib/form-drafts";
-import { DraftBanner } from "@/components/draft-banner";
+import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/comment-draft";
 
 type UserOption = { id: string; name: string };
 
@@ -21,7 +19,6 @@ type CommentFormProps = {
   parentAuthorName?: string;
   onCancel?: () => void;
   onSuccess?: () => void;
-  currentUserId?: string;
 };
 
 export function CommentForm({
@@ -31,31 +28,38 @@ export function CommentForm({
   parentAuthorName,
   onCancel,
   onSuccess,
-  currentUserId,
 }: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
-
-  const draftKey = buildDraftKey({
-    userId: currentUserId,
-    formType: "comment",
-    bugId,
-    parentId,
-  });
-
-  const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
-    draftKey,
-    { body: "" },
-  );
-
+  const [body, setBody] = useState("");
+  const [restored, setRestored] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
+  const key = draftKey(bugId, parentId);
 
-  const handleDiscard = () => {
-    discardDraft();
-    onCancel?.();
-  };
+  // localStorage only exists on the client, so this cannot be a state
+  // initializer without the server and client rendering different markup,
+  // and setting state during the effect would be the cascading render the
+  // lint rule warns about. A microtask after mount is the first safe moment.
+  useEffect(() => {
+    const saved = readDraft(localStorage, key);
+    if (!saved) return;
+    queueMicrotask(() => {
+      // Don't stamp over anything typed in the moment before this ran.
+      setBody((current) => (current ? current : saved));
+      setRestored(true);
+    });
+  }, [key]);
+
+  const update = useCallback(
+    (next: string) => {
+      setBody(next);
+      setRestored(false);
+      writeDraft(localStorage, key, next);
+    },
+    [key],
+  );
 
   return (
     <form
@@ -68,7 +72,9 @@ export function CommentForm({
           if (result.error) {
             setError(result.error);
           } else {
-            clearDraft();
+            setBody("");
+            setRestored(false);
+            clearDraft(localStorage, key);
             formRef.current?.reset();
             onSuccess?.();
           }
@@ -78,13 +84,8 @@ export function CommentForm({
       {parentId ? (
         <input type="hidden" name="parentId" value={parentId} />
       ) : null}
-      {isRestored && values.body.trim().length > 0 ? (
-        <DraftBanner
-          onDiscard={handleDiscard}
-          message="Restored unsaved comment draft"
-        />
-      ) : null}
       <label
+        id={`${parentId ? `body-${parentId}` : "body"}-label`}
         htmlFor={parentId ? `body-${parentId}` : "body"}
         className="block text-sm font-medium text-slate-700"
       >
@@ -95,12 +96,13 @@ export function CommentForm({
       <MarkdownEditor
         ref={editorRef}
         id={parentId ? `body-${parentId}` : "body"}
+        labelId={`${parentId ? `body-${parentId}` : "body"}-label`}
         name="body"
         required
         rows={isReply ? 3 : 4}
         maxLength={2000}
-        value={values.body}
-        onChange={(val) => setValue("body", val)}
+        value={body}
+        onChange={update}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
         placeholder={
@@ -122,8 +124,20 @@ export function CommentForm({
           {error}
         </p>
       ) : null}
+      {restored ? (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-slate-600" role="status">
+          <span>Restored an unsent draft.</span>
+          <button
+            type="button"
+            className="rounded-sm font-medium text-teal-700 underline hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+            onClick={() => update("")}
+          >
+            Discard it
+          </button>
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !values.body.trim()}>
+        <Button type="submit" disabled={pending || !body.trim()}>
           {pending
             ? isReply
               ? "Replying…"
@@ -137,7 +151,9 @@ export function CommentForm({
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={handleDiscard}
+            onClick={onCancel}
+            // The draft stays saved: cancelling a reply is usually "not now",
+            // and re-opening it restores what was typed.
           >
             Cancel
           </Button>
