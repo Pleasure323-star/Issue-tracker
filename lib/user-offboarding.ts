@@ -3,9 +3,14 @@ import type { PrismaClient } from "@prisma/client";
 
 /**
  * Internal offboarding operation for trusted administrative callers (#356).
- * Reassign required history to an existing retention account before deletion.
+ * Reassign reported bugs, authored comments, and activity history to an existing
+ * retention account before deletion, all in one transaction.
  * Assignees are cleared and user-owned dependent rows follow their FK policies.
  * Callers must authorize offboarding before invoking this helper.
+ *
+ * Rejects with Error if both user IDs match, or Prisma P2025 if either user is
+ * missing. Other database errors propagate; a failed transaction rolls back
+ * all changes.
  */
 export async function offboardUser(
   db: PrismaClient,
