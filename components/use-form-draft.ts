@@ -25,6 +25,7 @@ export function useFormDraft<T extends Record<string, unknown>>(
   const [overrides, setOverrides] = useState<Partial<T>>({});
   const [isDiscarded, setIsDiscarded] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overridesRef = useRef<Partial<T>>({});
 
   // useSyncExternalStore safely reads localStorage on the client without SSR hydration mismatches
   const rawDraft = useSyncExternalStore(
@@ -57,46 +58,45 @@ export function useFormDraft<T extends Record<string, unknown>>(
 
   const setValue = useCallback(
     <K extends keyof T>(field: K, val: T[K]) => {
-      setOverrides((prev) => {
-        const next = { ...prev, [field]: val };
+      const nextOverrides = { ...overridesRef.current, [field]: val };
+      overridesRef.current = nextOverrides;
+      setOverrides(nextOverrides);
+
+      if (key && enabled) {
+        if (timerRef.current) clearTimeout(timerRef.current);
         const merged: T = {
           ...initialValues,
           ...(isDiscarded ? {} : restoredDraft),
-          ...next,
+          ...nextOverrides,
         };
-        if (key && enabled) {
-          if (timerRef.current) clearTimeout(timerRef.current);
-          timerRef.current = setTimeout(() => {
-            saveDraftToStorage(key, merged);
-          }, debounceMs);
-        }
-        return next;
-      });
+        timerRef.current = setTimeout(() => {
+          saveDraftToStorage(key, merged);
+        }, debounceMs);
+      }
     },
     [debounceMs, enabled, initialValues, isDiscarded, key, restoredDraft],
   );
 
   const setValues = useCallback(
     (newValues: Partial<T> | ((prev: T) => T)) => {
-      setOverrides((prev) => {
-        const currentMerged: T = {
-          ...initialValues,
-          ...(isDiscarded ? {} : restoredDraft),
-          ...prev,
-        };
-        const nextPartial =
-          typeof newValues === "function" ? newValues(currentMerged) : newValues;
-        const next = { ...prev, ...nextPartial };
-        const merged: T = { ...currentMerged, ...nextPartial };
+      const currentMerged: T = {
+        ...initialValues,
+        ...(isDiscarded ? {} : restoredDraft),
+        ...overridesRef.current,
+      };
+      const nextPartial =
+        typeof newValues === "function" ? newValues(currentMerged) : newValues;
+      const nextOverrides = { ...overridesRef.current, ...nextPartial };
+      overridesRef.current = nextOverrides;
+      setOverrides(nextOverrides);
 
-        if (key && enabled) {
-          if (timerRef.current) clearTimeout(timerRef.current);
-          timerRef.current = setTimeout(() => {
-            saveDraftToStorage(key, merged);
-          }, debounceMs);
-        }
-        return next;
-      });
+      if (key && enabled) {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        const merged: T = { ...currentMerged, ...nextPartial };
+        timerRef.current = setTimeout(() => {
+          saveDraftToStorage(key, merged);
+        }, debounceMs);
+      }
     },
     [debounceMs, enabled, initialValues, isDiscarded, key, restoredDraft],
   );
@@ -107,6 +107,7 @@ export function useFormDraft<T extends Record<string, unknown>>(
       removeDraftFromStorage(key);
     }
     setIsDiscarded(true);
+    overridesRef.current = {};
     setOverrides({});
   }, [key]);
 
@@ -116,6 +117,7 @@ export function useFormDraft<T extends Record<string, unknown>>(
       removeDraftFromStorage(key);
     }
     setIsDiscarded(true);
+    overridesRef.current = {};
     setOverrides({});
   }, [key]);
 

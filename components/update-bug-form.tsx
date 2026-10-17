@@ -5,11 +5,12 @@ import type { Severity, Status } from "@prisma/client";
 import { updateBugAction } from "@/app/actions/bugs";
 import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
-import { formatUserLabel, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
 import { DraftBanner } from "@/components/draft-banner";
+import { AssigneeCombobox } from "@/components/assignee-combobox";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -185,20 +186,13 @@ export function UpdateBugForm({
               >
                 Assignee
               </label>
-              <select
+              <AssigneeCombobox
                 id="assigneeId"
                 name="assigneeId"
+                people={users}
                 value={values.assigneeId}
-                onChange={(e) => setValue("assigneeId", e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-              >
-                <option value="">Unassigned</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {formatUserLabel(user.name, user.role)}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setValue("assigneeId", val)}
+              />
             </div>
           </>
         ) : assigneeId ? (

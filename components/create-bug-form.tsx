@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { unstable_rethrow } from "next/navigation";
 import { createBugAction, type ActionResult } from "@/app/actions/bugs";
+import { submitFailureMessage } from "@/lib/submit-error";
 import { severities } from "@/lib/validations/bug";
 import { severityLabels } from "@/lib/labels";
-import { formatUserLabel, type AppRole } from "@/lib/roles";
+import type { AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -14,6 +15,7 @@ import { MarkdownEditor } from "@/components/markdown-editor";
 import { useFormDraft } from "@/components/use-form-draft";
 import { buildDraftKey } from "@/lib/form-drafts";
 import { DraftBanner } from "@/components/draft-banner";
+import { AssigneeCombobox } from "@/components/assignee-combobox";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -55,15 +57,21 @@ export function CreateBugForm({
   );
 
   const [error, setError] = useState<string | null>(null);
+  // True when the request itself failed (network / server error), so the
+  // person can simply retry; validation errors from the server aren't retryable.
+  const [canRetry, setCanRetry] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const mentionUsers = users.map((user) => ({ id: user.id, name: user.name }));
 
   return (
     <form
+      ref={formRef}
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         setError(null);
+        setCanRetry(false);
         const formData = new FormData();
         formData.set("title", values.title);
         formData.set("typeId", values.typeId);
@@ -86,7 +94,8 @@ export function CreateBugForm({
             }
           } catch (error) {
             unstable_rethrow(error);
-            setError("Something went wrong. Please try again.");
+            setError(submitFailureMessage(navigator.onLine));
+            setCanRetry(true);
           }
         });
       }}
@@ -233,19 +242,13 @@ export function CreateBugForm({
             >
               Assignee
             </label>
-            <Select
+            <AssigneeCombobox
               id="assigneeId"
               name="assigneeId"
+              people={users}
               value={values.assigneeId}
-              onChange={(event) => setValue("assigneeId", event.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {formatUserLabel(user.name, user.role)}
-                </option>
-              ))}
-            </Select>
+              onChange={(val) => setValue("assigneeId", val)}
+            />
           </div>
         </div>
       ) : currentUserId ? (
@@ -266,9 +269,19 @@ export function CreateBugForm({
         </div>
       ) : null}
       {error ? (
-        <p className="text-sm text-red-600" role="alert">
-          {error}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="alert">
+          <p className="text-sm text-red-600">{error}</p>
+          {canRetry ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => formRef.current?.requestSubmit()}
+              className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Try again
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Creating…" : "Create issue"}
