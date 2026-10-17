@@ -31,12 +31,14 @@ afterAll(async () => {
   }
 });
 
+/** Create a test user with a unique email in the isolated test schema. */
 function createUser() {
   return db.user.create({
     data: { name: "Test user", email: `${randomUUID()}@example.invalid` },
   });
 }
 
+/** Create departing and replacement users plus an issue with history to transfer. */
 async function createHistory() {
   const source = await createUser();
   const replacement = await createUser();
