@@ -244,7 +244,7 @@ export default async function BugsPage({
             return (
               <li
                 key={bug.id}
-                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 transition hover:bg-slate-50"
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 md:flex-nowrap sm:px-4 sm:py-4 transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
@@ -357,7 +357,9 @@ export default async function BugsPage({
                   </div>
                 </Link>
                 {canBoost || canDelete ? (
-                  <div className="flex shrink-0 items-center gap-1 self-center pl-1">
+                  // Below `md` the actions get their own row so the title keeps
+                  // the full width; beside the issue from `md` up (#255).
+                  <div className="flex basis-full shrink-0 items-center justify-end gap-1 md:basis-auto md:self-center md:pl-1">
                     {canBoost && !bug.isDeleted ? (
                       <BoostTicketButton
                         bugId={bug.id}
