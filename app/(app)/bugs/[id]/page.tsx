@@ -6,7 +6,7 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
-import { buildCommentTree } from "@/lib/comments";
+import { buildCommentTree, countVisibleComments } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
 } from "@/lib/link-preview";
@@ -450,7 +450,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({bug.comments.length})
+          Comments ({countVisibleComments(bug.comments)})
         </h2>
         <CommentThread
           bugId={bug.id}
