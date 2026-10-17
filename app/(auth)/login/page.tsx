@@ -4,6 +4,9 @@ import { LoginForm } from "@/components/login-form";
 import { isPasswordAuthEnabled } from "@/lib/auth-mode";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Sign in" };
+
 /**
  * Authenticated users are redirected to /bugs by middleware (`auth` wrapper).
  * Errors show fixed copy per `?error=` code only; any other query text (such
@@ -15,6 +18,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{
     callbackUrl?: string;
+    expired?: string;
     error?: string;
   }>;
 }) {
@@ -31,6 +35,12 @@ export default async function LoginPage({
         <p className="mt-1.5 text-sm text-slate-600">
           Sign in with your Google account to report, vote, and track issues.
         </p>
+
+        {params.expired && !params.error ? (
+          <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            Your session ended. Sign in again to continue.
+          </p>
+        ) : null}
 
         {params.error ? (
           <div
