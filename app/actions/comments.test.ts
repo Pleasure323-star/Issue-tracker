@@ -12,17 +12,23 @@ vi.mock("@/lib/notify", () => ({
   notifyLater: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    comment: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
+vi.mock("@/lib/prisma", () => {
+  const tx = {
+    comment: { update: vi.fn() },
+    bugActivity: { updateMany: vi.fn() },
+  };
+  return {
+    prisma: {
+      comment: {
+        findUnique: vi.fn(),
+      },
+      user: {
+        findMany: vi.fn(),
+      },
+      $transaction: vi.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     },
-    user: {
-      findMany: vi.fn(),
-    },
-  },
-}));
+  };
+});
 
 import { prisma } from "@/lib/prisma";
 import { notifyLater } from "@/lib/notify";

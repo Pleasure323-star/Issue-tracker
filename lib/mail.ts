@@ -22,8 +22,17 @@ function encodeSubject(subject: string) {
  */
 export async function sendMail({ to, subject, text }: SendMailInput) {
   if (!smtpConfigured()) {
-    console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
-    return;
+    // #210: this used to log the message (including live password-reset URLs)
+    // and return normally, so callers reported success while nobody received
+    // anything. In development we keep the friendly log; anywhere else an
+    // unconfigured mailer is a deployment error and must fail loudly.
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
+      return;
+    }
+    throw new Error(
+      "SMTP is not configured (SMTP_HOST / SMTP_FROM). Refusing to report a successful send.",
+    );
   }
 
   await sendSmtpMail({ to, subject, text });
@@ -63,28 +72,50 @@ async function sendSmtpMail({ to, subject, text }: SendMailInput) {
       await session.command(Buffer.from(pass).toString("base64"), 235);
     }
 
-    const fromAddress = extractEmail(from);
+    const fromAddress = extractEmail(singleLine(from));
     await session.command(`MAIL FROM:<${fromAddress}>`, 250);
-    await session.command(`RCPT TO:<${to}>`, 250);
+    await session.command(`RCPT TO:<${singleLine(to)}>`, 250);
     await session.command("DATA", 354);
 
-    const body = [
-      `From: ${from}`,
-      `To: ${to}`,
-      `Subject: ${encodeSubject(subject)}`,
-      "MIME-Version: 1.0",
-      'Content-Type: text/plain; charset="UTF-8"',
-      "Content-Transfer-Encoding: 8bit",
-      "",
-      text.replace(/\r?\n/g, "\r\n"),
-      ".",
-    ].join("\r\n");
-
-    await session.command(body, 250);
+    await session.command(buildSmtpData({ from, to, subject, text }), 250);
     await session.command("QUIT", 221);
   } finally {
     session.close();
   }
+}
+
+/** Removes CR/LF so a value can't start a new header line (header injection). */
+function singleLine(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/**
+ * The DATA payload, ending in the "." terminator line (#218).
+ *
+ * - Header values are flattened to one line, so a title like
+ *   "Bug\r\nBcc: x@evil" can't inject headers.
+ * - Body lines that start with "." are dot-stuffed (RFC 5321 §4.5.2);
+ *   otherwise a line containing only "." would end the message early and
+ *   the rest would be sent to the server as commands.
+ */
+export function buildSmtpData({ from, to, subject, text }: SendMailInput & { from: string }): string {
+  const body = text
+    .replace(/\r?\n/g, "\n")
+    .split("\n")
+    .map((line) => (line.startsWith(".") ? `.${line}` : line))
+    .join("\r\n");
+
+  return [
+    `From: ${singleLine(from)}`,
+    `To: ${singleLine(to)}`,
+    `Subject: ${encodeSubject(singleLine(subject))}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    body,
+    ".",
+  ].join("\r\n");
 }
 
 function extractEmail(value: string) {
@@ -120,7 +151,8 @@ function upgradeToTls(socket: Socket, host: string) {
   });
 }
 
-class SmtpSession {
+/** Exported for tests only. */
+export class SmtpSession {
   private buffer = "";
   private waiters: Array<{
     code: number;
