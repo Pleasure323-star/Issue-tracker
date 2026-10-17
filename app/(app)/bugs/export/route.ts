@@ -13,7 +13,7 @@ import { severityLabel, statusLabel } from "@/lib/labels";
  * table; the file says so on its last line when it is reached, because a
  * truncated spreadsheet that looks complete is worse than no spreadsheet.
  */
-export const EXPORT_LIMIT = 10_000;
+const EXPORT_LIMIT = 10_000;
 
 /** Rows fetched per round trip while streaming. */
 const PAGE = 500;
