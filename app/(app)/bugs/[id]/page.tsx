@@ -6,7 +6,8 @@ import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/auth-helpers";
 import { resolveSessionUserId } from "@/lib/session-user";
 import { LocalTime } from "@/components/local-time";
-import { buildCommentTree } from "@/lib/comments";
+import { formatIssueNumber } from "@/lib/issue-number";
+import { buildCommentTree, countVisibleComments } from "@/lib/comments";
 import {
   bugLinkPreviewDescription,
 } from "@/lib/link-preview";
@@ -41,6 +42,9 @@ type BugPageProps = {
   params: Promise<{ id: string }>;
 };
 
+/** How much of the activity log a single page render is allowed to load. */
+const ACTIVITY_PAGE_SIZE = 50;
+
 export async function generateMetadata({
   params,
 }: BugPageProps): Promise<Metadata> {
@@ -48,6 +52,7 @@ export async function generateMetadata({
   const bug = await prisma.bug.findUnique({
     where: { id },
     select: {
+      number: true,
       title: true,
       status: true,
       updatedAt: true,
@@ -68,7 +73,9 @@ export async function generateMetadata({
   const description = bugLinkPreviewDescription({ status: bug.status });
   const canonical = absoluteUrl(`/bugs/${id}`);
   const image = absoluteUrl(SHARE_IMAGE.url);
-  const title = bug.title;
+  // The reference goes in the tab title too: with several issues open, the
+  // number is what tells two similar titles apart.
+  const title = `${formatIssueNumber(bug.number)} ${bug.title}`;
 
   return {
     title,
@@ -138,7 +145,8 @@ export default async function BugDetailPage({ params }: BugPageProps) {
   const canTriage = isAdmin(user.role);
   const canDelete = canDeleteTicket(user.role);
 
-  const [bug, users, categories, types, voterSummary] = await Promise.all([
+  const [bug, users, categories, types, voterSummary, activityCount] =
+    await Promise.all([
     prisma.bug.findUnique({
       where: { id },
       include: {
@@ -160,9 +168,13 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           },
           orderBy: { createdAt: "asc" },
         },
+        // The activity log is append-only and never pruned, so a long-lived
+        // issue would load every row it has ever had. Take the newest page
+        // in the database and reverse it below for display (#ACTIVITY-CAP).
         activities: {
           include: { actor: { select: { name: true } } },
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_PAGE_SIZE,
         },
         votes: { where: { userId }, select: { id: true, value: true }, take: 1 },
       },
@@ -178,6 +190,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
     }),
     canTriage ? getActiveIssueTypes() : Promise.resolve([]),
     fetchVoterSummary(id),
+    prisma.bugActivity.count({ where: { bugId: id } }),
   ]);
 
   if (!bug) {
@@ -239,6 +252,9 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
               <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 break-words">
+                <span className="font-normal text-slate-500 tabular-nums">
+                  {formatIssueNumber(bug.number)}
+                </span>{" "}
                 {bug.title}
               </h1>
               <div className="flex flex-wrap items-center gap-2">
@@ -351,6 +367,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
               <UserNameWithBadges
                 name={bug.reporter.name}
                 role={bug.reporter.role}
+                userId={bug.reporterId}
                 showAuthor
               />
             </dd>
@@ -362,6 +379,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
                 <UserNameWithBadges
                   name={bug.assignee.name}
                   role={bug.assignee.role}
+                  userId={bug.assigneeId}
                 />
               ) : (
                 <span className="text-slate-500">Unassigned</span>
@@ -446,11 +464,14 @@ export default async function BugDetailPage({ params }: BugPageProps) {
         />
       ) : null}
 
-      <ActivityTimeline activities={bug.activities} />
+      <ActivityTimeline
+        activities={[...bug.activities].reverse()}
+        totalCount={activityCount}
+      />
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Comments ({bug.comments.length})
+          Comments ({countVisibleComments(bug.comments)})
         </h2>
         <CommentThread
           bugId={bug.id}

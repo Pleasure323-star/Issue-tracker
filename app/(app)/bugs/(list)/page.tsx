@@ -19,6 +19,7 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { getIssueTypeBadgeClass } from "@/lib/issue-type-styles";
 import { escapeSearchQuery, toSingleQueryParam } from "@/lib/search";
+import { formatIssueNumber, parseIssueNumberQuery } from "@/lib/issue-number";
 import { calculatePagination } from "@/lib/pagination";
 import { PaginationControls } from "@/components/pagination-controls";
 import { fetchVoterSummaries } from "@/lib/voter-summaries";
@@ -36,11 +37,20 @@ import { canBoostTicket } from "@/lib/ticket-boosting";
 import { BoostTicketButton } from "@/components/boost-ticket-button";
 import { mineFilterWhere, parseMineFilter } from "@/lib/mine-filter";
 import { TAGS_PARAM, parseTagFilter, serializeTags, tagTypeIds } from "@/lib/tag-filter";
+import {
+  PLATFORM_PARAM,
+  parsePlatformFilter,
+  platformFilterWhere,
+} from "@/lib/platform-filter";
+
+/* Distinct browser-tab title; the root layout appends "· Zedu Issues". */
+export const metadata = { title: "Issues" };
 
 type SearchParams = Promise<{
   q?: string | string[];
   status?: string | string[];
   severity?: string | string[];
+  platform?: string | string[];
   sort?: string | string[];
   page?: string | string[];
   deleted?: string | string[];
@@ -91,10 +101,19 @@ export default async function BugsPage({
   };
 
   // Tag filter (#102): issue types picked from the search box.
-  const tagTypes = await prisma.issueType.findMany({
-    select: { id: true, name: true, isActive: true },
-    orderBy: { name: "asc" },
-  });
+  const [tagTypes, platforms] = await Promise.all([
+    prisma.issueType.findMany({
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+    // Every platform, not just active ones: a link filtered on a platform
+    // that was since deactivated still has to resolve. BugFilters narrows
+    // the dropdown itself.
+    prisma.category.findMany({
+      select: { id: true, name: true, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   const selectedTags = parseTagFilter(params.tags, tagTypes);
   if (selectedTags.length > 0) {
     where.typeId = { in: tagTypeIds(selectedTags, tagTypes) };
@@ -107,12 +126,20 @@ export default async function BugsPage({
   if (isSeverity(severityParam)) {
     where.severity = severityParam;
   }
+  // Platform filter: one category, or the issues with none set.
+  const selectedPlatform = parsePlatformFilter(params.platform, platforms);
+  Object.assign(where, platformFilterWhere(selectedPlatform));
   if (qParam?.trim()) {
     const q = escapeSearchQuery(qParam.trim());
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
     ];
+    // "42" or "#42" should also find issue #42, which is how people quote an
+    // issue to each other. Left as an OR so a title containing "42" still
+    // matches too, rather than the number silently hijacking the search.
+    const asNumber = parseIssueNumberQuery(qParam);
+    if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
   const totalCount = await prisma.bug.count({ where });
@@ -127,6 +154,7 @@ export default async function BugsPage({
     where,
     select: {
       id: true,
+      number: true,
       title: true,
       status: true,
       severity: true,
@@ -207,7 +235,11 @@ export default async function BugsPage({
         fallback={<div className="h-12 animate-pulse rounded-lg bg-slate-100" />}
       >
         {/* #204: keyed on the search query so BugFilters remounts on URL change */}
-        <BugFilters key={qParam ?? ""} tagTypes={tagTypes} />
+        <BugFilters
+          key={qParam ?? ""}
+          tagTypes={tagTypes}
+          platforms={platforms}
+        />
       </Suspense>
 
       {bugs.length === 0 ? (
@@ -244,7 +276,9 @@ export default async function BugsPage({
             return (
               <li
                 key={bug.id}
-                className="flex flex-wrap items-start gap-3 px-3 py-3.5 md:flex-nowrap sm:px-4 sm:py-4 transition hover:bg-slate-50"
+                /* flex-wrap so the admin controls drop to their own line on small screens
+                   instead of squeezing the title (#255). */
+                className="flex flex-wrap items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4 md:flex-nowrap transition hover:bg-slate-50"
               >
                 <VoteButton
                   bugId={bug.id}
@@ -255,10 +289,15 @@ export default async function BugsPage({
                   size="sm"
                   readOnly={isDeletedView}
                 />
-                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1">
+                <Link href={`/bugs/${bug.id}`} className="min-w-0 flex-1 basis-0">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-slate-900 break-words">{bug.title}</p>
+                      <p className="font-medium text-slate-900 break-words">
+                        <span className="font-normal text-slate-500 tabular-nums">
+                          {formatIssueNumber(bug.number)}
+                        </span>{" "}
+                        {bug.title}
+                      </p>
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500">
                         <span>Reported by</span>
                         <UserNameWithBadges
@@ -359,7 +398,7 @@ export default async function BugsPage({
                 {canBoost || canDelete ? (
                   // Below `md` the actions get their own row so the title keeps
                   // the full width; beside the issue from `md` up (#255).
-                  <div className="flex basis-full shrink-0 items-center justify-end gap-1 md:basis-auto md:self-center md:pl-1">
+                  <div className="flex w-full basis-full shrink-0 items-center justify-end gap-1 self-center border-t border-slate-100 pt-2 md:basis-auto md:w-auto md:border-0 md:pt-0 md:pl-1">
                     {canBoost && !bug.isDeleted ? (
                       <BoostTicketButton
                         bugId={bug.id}
@@ -407,6 +446,7 @@ export default async function BugsPage({
             ...(mineFilter ? { mine: mineFilter } : {}),
             ...(qParam ? { q: qParam } : {}),
             ...(tagsParam ? { [TAGS_PARAM]: tagsParam } : {}),
+            ...(selectedPlatform ? { [PLATFORM_PARAM]: selectedPlatform } : {}),
             ...(isDeletedView ? { deleted: "true" } : {}),
             sort: sortParam,
           }}
