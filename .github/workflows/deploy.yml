@@ -23,7 +23,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Wait for Malware Scan (CI Gate)
         shell: bash
@@ -38,7 +38,7 @@ jobs:
           ELAPSED=0
           TIMEOUT=600
           while true; do
-            STATUS=$(gh run list --repo "$GH_REPO" --commit "$HEAD_SHA" --workflow "Malware Scan (CI Gate)" --json status,conclusion --jq '.[0] // empty')
+            STATUS=$(gh run list --repo "$GH_REPO" --commit "$HEAD_SHA" --branch main --event push --workflow "Malware Scan (CI Gate)" --json status,conclusion --jq '.[0] // empty')
             if [[ -n "$STATUS" ]]; then
               RUN_STATUS=$(echo "$STATUS" | jq -r '.status')
               RUN_CONCLUSION=$(echo "$STATUS" | jq -r '.conclusion')
