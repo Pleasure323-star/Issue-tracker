@@ -459,6 +459,7 @@ export default async function BugDetailPage({ params }: BugPageProps) {
           categories={withCurrentOption(categories, bug.category)}
           types={withCurrentOption(types, bug.type)}
           canEditTriage={canTriage}
+          currentUserId={user.id}
         />
       ) : null}
 

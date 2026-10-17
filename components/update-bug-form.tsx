@@ -7,6 +7,9 @@ import { severities, statuses } from "@/lib/validations/bug";
 import { severityLabel, statusLabel } from "@/lib/labels";
 import { formatUserLabel, type AppRole } from "@/lib/roles";
 import { Button } from "@/components/ui/button";
+import { useFormDraft } from "@/components/use-form-draft";
+import { buildDraftKey } from "@/lib/form-drafts";
+import { DraftBanner } from "@/components/draft-banner";
 
 type UserOption = { id: string; name: string; role: AppRole };
 type CategoryOption = { id: string; name: string };
@@ -23,6 +26,7 @@ export function UpdateBugForm({
   categories = [],
   types = [],
   canEditTriage = true,
+  currentUserId,
 }: {
   bugId: string;
   status: Status;
@@ -35,7 +39,25 @@ export function UpdateBugForm({
   types?: TypeOption[];
   /** Admins can edit severity/type/category/assignee; assignees only change status. */
   canEditTriage?: boolean;
+  currentUserId?: string;
 }) {
+  const draftKey = buildDraftKey({
+    userId: currentUserId,
+    formType: "update-bug",
+    bugId,
+  });
+
+  const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
+    draftKey,
+    {
+      status,
+      typeId: typeId ?? "",
+      severity,
+      categoryId: categoryId ?? "",
+      assigneeId: assigneeId ?? "",
+    },
+  );
+
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -51,11 +73,19 @@ export function UpdateBugForm({
           if (result.error) {
             setError(result.error);
           } else {
+            clearDraft();
             setSaved(true);
           }
         });
       }}
     >
+      {isRestored ? (
+        <DraftBanner
+          onDiscard={discardDraft}
+          message="Restored unsaved triage changes"
+        />
+      ) : null}
+
       <h2 className="text-sm font-semibold text-slate-900">
         {canEditTriage ? "Triage" : "Update status"}
       </h2>
@@ -73,7 +103,8 @@ export function UpdateBugForm({
           <select
             id="status"
             name="status"
-            defaultValue={status}
+            value={values.status}
+            onChange={(e) => setValue("status", e.target.value as Status)}
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           >
             {statuses.map((value) => (
@@ -92,7 +123,8 @@ export function UpdateBugForm({
               <select
                 id="typeId"
                 name="typeId"
-                defaultValue={typeId ?? ""}
+                value={values.typeId}
+                onChange={(e) => setValue("typeId", e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
               >
                 <option value="">No type</option>
@@ -113,7 +145,8 @@ export function UpdateBugForm({
               <select
                 id="severity"
                 name="severity"
-                defaultValue={severity}
+                value={values.severity}
+                onChange={(e) => setValue("severity", e.target.value as Severity)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
                 {severities.map((value) => (
@@ -133,7 +166,8 @@ export function UpdateBugForm({
               <select
                 id="categoryId"
                 name="categoryId"
-                defaultValue={categoryId ?? ""}
+                value={values.categoryId}
+                onChange={(e) => setValue("categoryId", e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
               >
                 <option value="">None</option>
@@ -154,7 +188,8 @@ export function UpdateBugForm({
               <select
                 id="assigneeId"
                 name="assigneeId"
-                defaultValue={assigneeId ?? ""}
+                value={values.assigneeId}
+                onChange={(e) => setValue("assigneeId", e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
               >
                 <option value="">Unassigned</option>
@@ -177,7 +212,8 @@ export function UpdateBugForm({
             <select
               id="assigneeId"
               name="assigneeId"
-              defaultValue={assigneeId}
+              value={values.assigneeId}
+              onChange={(e) => setValue("assigneeId", e.target.value)}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             >
               <option value={assigneeId}>Assigned to you</option>

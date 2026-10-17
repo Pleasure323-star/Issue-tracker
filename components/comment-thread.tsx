@@ -183,6 +183,7 @@ function CommentItem({
                 parentAuthorName={comment.author.name}
                 onCancel={() => setReplying(false)}
                 onSuccess={() => setReplying(false)}
+                currentUserId={currentUserId}
               />
             ) : (
               <div className="flex flex-wrap items-center gap-1">
@@ -281,7 +282,7 @@ export function CommentThread({
           ))}
         </ul>
       )}
-      <CommentForm bugId={bugId} users={users} />
+      <CommentForm bugId={bugId} users={users} currentUserId={currentUserId} />
     </div>
   );
 }

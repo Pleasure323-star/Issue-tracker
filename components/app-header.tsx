@@ -8,17 +8,20 @@ import { UserNameWithBadges } from "@/components/user-name-with-badges";
 import { Button } from "@/components/ui/button";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { RoleSwitcher } from "@/components/role-switcher";
+import { clearUserDrafts } from "@/lib/form-drafts";
 
 export function AppHeader({
   userName,
   role,
   isRealSuperAdmin,
   isRealAdmin,
+  userId,
 }: {
   userName?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
+  userId?: string | null;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -82,7 +85,7 @@ export function AppHeader({
           <Link href="/settings" className="text-sm text-slate-600 hover:text-slate-900">
             Settings
           </Link>
-          <form action={logoutAction}>
+          <form action={logoutAction} onSubmit={() => clearUserDrafts(userId)}>
             <Button type="submit" variant="secondary">
               Sign out
             </Button>
@@ -211,7 +214,11 @@ export function AppHeader({
           </nav>
 
           <div className="mt-4 border-t border-slate-100 pt-3">
-            <form action={logoutAction} className="w-full">
+            <form
+              action={logoutAction}
+              className="w-full"
+              onSubmit={() => clearUserDrafts(userId)}
+            >
               <Button type="submit" variant="secondary" className="w-full">
                 Sign out
               </Button>

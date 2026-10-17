@@ -8,6 +8,9 @@ import {
   type MarkdownEditorHandle,
 } from "@/components/markdown-editor";
 import { MentionText } from "@/components/comment-body";
+import { useFormDraft } from "@/components/use-form-draft";
+import { buildDraftKey } from "@/lib/form-drafts";
+import { DraftBanner } from "@/components/draft-banner";
 
 type UserOption = { id: string; name: string };
 
@@ -18,6 +21,7 @@ type CommentFormProps = {
   parentAuthorName?: string;
   onCancel?: () => void;
   onSuccess?: () => void;
+  currentUserId?: string;
 };
 
 export function CommentForm({
@@ -27,13 +31,31 @@ export function CommentForm({
   parentAuthorName,
   onCancel,
   onSuccess,
+  currentUserId,
 }: CommentFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
-  const [body, setBody] = useState("");
+
+  const draftKey = buildDraftKey({
+    userId: currentUserId,
+    formType: "comment",
+    bugId,
+    parentId,
+  });
+
+  const { values, setValue, isRestored, clearDraft, discardDraft } = useFormDraft(
+    draftKey,
+    { body: "" },
+  );
+
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const isReply = Boolean(parentId);
+
+  const handleDiscard = () => {
+    discardDraft();
+    onCancel?.();
+  };
 
   return (
     <form
@@ -46,7 +68,7 @@ export function CommentForm({
           if (result.error) {
             setError(result.error);
           } else {
-            setBody("");
+            clearDraft();
             formRef.current?.reset();
             onSuccess?.();
           }
@@ -55,6 +77,12 @@ export function CommentForm({
     >
       {parentId ? (
         <input type="hidden" name="parentId" value={parentId} />
+      ) : null}
+      {isRestored && values.body.trim().length > 0 ? (
+        <DraftBanner
+          onDiscard={handleDiscard}
+          message="Restored unsaved comment draft"
+        />
       ) : null}
       <label
         htmlFor={parentId ? `body-${parentId}` : "body"}
@@ -71,8 +99,8 @@ export function CommentForm({
         required
         rows={isReply ? 3 : 4}
         maxLength={2000}
-        value={body}
-        onChange={setBody}
+        value={values.body}
+        onChange={(val) => setValue("body", val)}
         users={users}
         renderMentions={(text) => <MentionText text={text} users={users} />}
         placeholder={
@@ -95,7 +123,7 @@ export function CommentForm({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={pending || !body.trim()}>
+        <Button type="submit" disabled={pending || !values.body.trim()}>
           {pending
             ? isReply
               ? "Replying…"
@@ -109,7 +137,7 @@ export function CommentForm({
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={onCancel}
+            onClick={handleDiscard}
           >
             Cancel
           </Button>

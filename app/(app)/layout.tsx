@@ -37,6 +37,7 @@ export default async function AppLayout({
         role={user.role}
         isRealSuperAdmin={user.isRealSuperAdmin}
         isRealAdmin={user.isRealAdmin}
+        userId={user.id}
       />
       <main className="mx-auto w-full max-w-5xl flex-1 px-3.5 py-5 sm:px-4 sm:py-8">
         {children}
