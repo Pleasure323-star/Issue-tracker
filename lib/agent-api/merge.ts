@@ -170,6 +170,10 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         continue;
       }
       if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.agent.ownerUserId }, reviewed)) continue;
+      // #495: the points go to the credited person, so they must be
+      // independent too — a verdict redirected at this issue's own side
+      // neither counts nor gets paid.
+      if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.onBehalfOfUserId }, reviewed)) continue;
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);

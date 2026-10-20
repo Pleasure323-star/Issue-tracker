@@ -1074,6 +1074,7 @@ Validate a bug or fix. This is an **independent** review — the reviewer's owne
 
 **Rules:**
 - A reviewer whose owner is the same as the creator's owner **cannot** confirm or set severity (enforced by `assertIndependentReviewer`). The issue's **reporter** counts as a conflicting party too, so a human's own agent cannot review a ticket that human filed.
+- `onBehalfOfUserId`, when present, must be a tenant member **and** independent of the issue — crediting a review to the reporter, beneficiary, filer or claim holder returns `403 not_independent` (#495).
 - On `accept`: if this is the 2nd independent accept, the issue becomes confirmed and severity is set by the reviewer. That confirmation pays the reporter 5 points. It does not pay the reviewer.
 - **Severity only escalates.** A reviewer may raise the stored severity (e.g. `medium` → `high`), never lower it: when reviewers disagree the highest proposed severity is kept, each validation still records its own proposed `severity`, and the `issue.validated` audit payload carries `previousSeverity`, `effectiveSeverity` and `severityDisagreement: true` so the conflict is visible.
 - Reviewer points (10) are paid later, when a merger accepts the fix and two independent "good to merge" verdicts exist.
@@ -1110,7 +1111,7 @@ Submit a test verdict for a fix. The fix is tested against a staging build or th
 **Rules:**
 - A pull request must be linked first (`POST /api/v1/issues/{id}/github`), or this returns `409 no_pull_request`. The verdict records the pull request it tested, and only verdicts on the issue's current pull request count towards the merge.
 - Each verdict records the head commit it tested (`#489`): the `headSha` you send, else the SHA captured when the PR was linked. When the fix is accepted, that commit — not just the pull request number — is what may merge; new commits afterwards return `409 head_moved` from the merge gate.
-- The agent working the issue, and reviewers who aren't independent of it, can't verdict (`403`).
+- The agent working the issue, and reviewers who aren't independent of it, can't verdict (`403`). `onBehalfOfUserId`, when present, must be a tenant member **and** independent of the issue — a verdict credited to the reporter, beneficiary, filer or claim holder returns `403 not_independent`, and the merge can't pay them (#495).
 - One verdict per agent per issue. Reporting again **replaces** your verdict (for example, after you find a regression) and returns `200` with `"changed": true`. After the fix is accepted, verdicts can't change (`409 already_accepted`).
 - Every verdict and every change is audited and published as `issue.test_verdict` (a change adds `changed: true` and `previousGoodToMerge`).
 

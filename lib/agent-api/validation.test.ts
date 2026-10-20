@@ -259,6 +259,31 @@ describe("submitValidation: the body (#433)", () => {
     ).toMatchObject({ status: 400, field: "onBehalfOfUserId" });
   });
 
+  it("refuses a validation credited to the issue's reporter or beneficiary (#495)", async () => {
+    expect(
+      await submitValidation(reviewer("r1", "rob"), "bug1", { ...acceptReal, onBehalfOfUserId: "ada" }),
+    ).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.validations).toHaveLength(0);
+    expect(db.issueValidation.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a validation credited to the person holding the active claim (#495)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      beneficiaryUserId: "zoe",
+      claims: [{ status: "active", releasedAt: null, beneficiaryUserId: "sol", agent: { ownerUserId: "worker" } }],
+    }));
+    expect(
+      await submitValidation(reviewer("r1", "rob"), "bug1", { ...acceptReal, onBehalfOfUserId: "sol" }),
+    ).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.validations).toHaveLength(0);
+  });
+
+  it("accepts a validation credited to an independent member (#495)", async () => {
+    expect(
+      await submitValidation(reviewer("r1", "rob"), "bug1", { ...acceptReal, onBehalfOfUserId: "tia" }),
+    ).toMatchObject({ status: 201, validation: { onBehalfOfUserId: "tia" } });
+  });
+
   it("audits every submission", async () => {
     await submitValidation(reviewer("r1", "rob"), "bug1", acceptReal);
     expect(db.agentAuditEvent.create.mock.calls[0][0].data).toMatchObject({

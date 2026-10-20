@@ -411,3 +411,38 @@ describe("acceptFix counts verdicts on the linked pull request only (#526)", () 
     expect(db.testVerdict.findMany.mock.calls[0][0].where).toMatchObject({ pullRequestUrl: PR });
   });
 });
+
+describe("acceptFix won't pay someone on the issue's own side through onBehalfOfUserId (#495)", () => {
+  it("drops a verdict credited to the issue's reporter or beneficiary, and pays nobody", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob", "ada");
+    verdict("r2", "sam", "sam");
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+
+    expect(result).toMatchObject({ status: 409, missing: "verdicts" });
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drops a verdict credited to the person the active claim is for", async () => {
+    confirmWith("rob", "sam");
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({ claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "sol", agent: { ownerUserId: "worker" } }] }),
+    );
+    verdict("r1", "rob", "sol");
+    verdict("r2", "sam", "sam");
+
+    expect(await acceptFix(merger("m1", "mo", "merger"), "bug1")).toMatchObject({ status: 409, missing: "verdicts" });
+  });
+
+  it("still counts and pays an independent credited reviewer", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob", "tia");
+    verdict("r2", "sam", "sam");
+
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({ status: 200, rewardedReviewerUserIds: ["tia", "sam"] });
+    const awards = db.pointEntry.createMany.mock.calls.map((call) => call[0].data[0]);
+    expect(awards).toContainEqual(expect.objectContaining({ role: "reviewer", userId: "tia" }));
+  });
+});

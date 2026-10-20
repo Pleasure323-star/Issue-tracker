@@ -25,6 +25,8 @@ export type ReviewedBug = {
   claims?: ReadonlyArray<{
     status: string;
     releasedAt?: Date | null;
+    /** Who the claim is for — the solver points would go to this person. */
+    beneficiaryUserId?: string | null;
     agent?: AgentOwner;
   }>;
 };
@@ -52,10 +54,18 @@ function activeClaimOwner(bug: ReviewedBug): string | null {
   return claim?.agent?.ownerUserId ?? null;
 }
 
+/** Who the active claim is for — the person the solver points pay (#495). */
+function activeClaimPerson(bug: ReviewedBug): string | null {
+  const claim = bug.claims?.find((c) => c.status === "active" && !c.releasedAt);
+  return claim?.beneficiaryUserId ?? null;
+}
+
 /**
  * Why `actor` may not review `bug`, or null when it may. Rejects when the
  * actor's owner owns the agent that created the ticket, is the ticket's
- * beneficiary, or owns the agent holding the active claim.
+ * beneficiary or reporter, owns the agent holding the active claim, or *is*
+ * the person the active claim is for (#495 — the solver reviewing its own
+ * fix, directly or with credit redirected through `onBehalfOfUserId`).
  */
 export function reviewerConflict(actor: ReviewingAgent, bug: ReviewedBug): ReviewerConflict | null {
   const owner = actor.ownerUserId;
@@ -65,6 +75,9 @@ export function reviewerConflict(actor: ReviewingAgent, bug: ReviewedBug): Revie
   // though a web-filed bug has no beneficiary set (#620).
   if (bug.beneficiaryUserId === owner || bug.reporterId === owner) return "own-ticket";
   if (activeClaimOwner(bug) === owner) return "claimed-by-own-agent";
+  // The claim's own person: the solver can't stand as an independent reviewer
+  // of its fix, whoever's agent files the verdict (#495).
+  if (activeClaimPerson(bug) === owner) return "claimed-by-own-agent";
   return null;
 }
 

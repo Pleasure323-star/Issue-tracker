@@ -115,7 +115,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
-  claims: { select: { status: true, releasedAt: true, agent: { select: { ownerUserId: true } } } },
+  claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
 type LoadedBug = Prisma.BugGetPayload<{ select: typeof reviewedBugSelect }>;
@@ -291,6 +291,17 @@ export async function submitValidation(
         error: "invalid_request",
         message: "onBehalfOfUserId must be a member of the agent's tenant.",
         field: "onBehalfOfUserId",
+      };
+    }
+    // #495: credit can't redirect a review onto this issue's own side. The
+    // credited person must be as independent as the agent's owner would be.
+    const creditedConflict = reviewerConflict({ id: agent.agentId, ownerUserId: onBehalfOfUserId }, bug);
+    if (creditedConflict) {
+      return {
+        status: 403,
+        error: "not_independent",
+        message:
+          "This validation can't be credited to that person: they are on this issue's own side (reporter, beneficiary, filer, or the person working it), so the review wouldn't be independent.",
       };
     }
   }

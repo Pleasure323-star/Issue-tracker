@@ -156,6 +156,31 @@ describe("submitTestVerdict: the body and record (#434)", () => {
     expect(state.verdicts).toHaveLength(0);
   });
 
+  it("refuses a verdict credited to the issue's reporter or beneficiary (#495)", async () => {
+    expect(
+      await submitTestVerdict(reviewer("r1", "rob"), "bug1", { ...good, onBehalfOfUserId: "ada" }),
+    ).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.verdicts).toHaveLength(0);
+    expect(db.testVerdict.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a verdict credited to the person holding the active claim (#495)", async () => {
+    db.bug.findFirst.mockResolvedValue(bugRow({
+      beneficiaryUserId: "zoe",
+      claims: [{ status: "active", releasedAt: null, agentId: "w1", beneficiaryUserId: "sol", agent: { ownerUserId: "worker" } }],
+    }));
+    expect(
+      await submitTestVerdict(reviewer("r1", "rob"), "bug1", { ...good, onBehalfOfUserId: "sol" }),
+    ).toMatchObject({ status: 403, error: "not_independent" });
+    expect(state.verdicts).toHaveLength(0);
+  });
+
+  it("accepts a verdict credited to an independent member (#495)", async () => {
+    expect(
+      await submitTestVerdict(reviewer("r1", "rob"), "bug1", { ...good, onBehalfOfUserId: "tia" }),
+    ).toMatchObject({ status: 201, verdict: { onBehalfOfUserId: "tia" } });
+  });
+
   it("keeps one verdict per agent per issue: reporting again replaces it (#529)", async () => {
     const rob = reviewer("r1", "rob");
     expect(await submitTestVerdict(rob, "bug1", good)).toMatchObject({ status: 201 });
