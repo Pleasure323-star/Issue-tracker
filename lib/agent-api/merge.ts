@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, ReviewerNotIndependentError, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
@@ -171,9 +171,9 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       }
       if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.agent.ownerUserId }, reviewed)) continue;
       // #495: the points go to the credited person, so they must be
-      // independent too — a verdict redirected at this issue's own side
-      // neither counts nor gets paid.
-      if (reviewerConflict({ id: verdict.agent.id, ownerUserId: verdict.onBehalfOfUserId }, reviewed)) continue;
+      // independent too — reviewerCreditConflict covers the agent-owner rule
+      // plus the assignee and the active claim's beneficiary.
+      if (reviewerCreditConflict(verdict.onBehalfOfUserId, reviewed)) continue;
       if (owners.has(verdict.agent.ownerUserId)) continue;
       owners.add(verdict.agent.ownerUserId);
       reviewers.push(verdict.onBehalfOfUserId);

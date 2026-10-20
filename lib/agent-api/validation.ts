@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient, type Severity, type ValidationKind } from "@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
-import { reviewerConflict, type ReviewedBug } from "@/lib/agents/independence";
+import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/lib/agents/independence";
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award } from "@/lib/points/award";
@@ -293,17 +293,13 @@ export async function submitValidation(
         field: "onBehalfOfUserId",
       };
     }
-    // #495: credit can't redirect a review onto this issue's own side. The
-    // credited person must be as independent as the agent's owner would be.
-    const creditedConflict = reviewerConflict({ id: agent.agentId, ownerUserId: onBehalfOfUserId }, bug);
-    if (creditedConflict) {
-      return {
-        status: 403,
-        error: "not_independent",
-        message:
-          "This validation can't be credited to that person: they are on this issue's own side (reporter, beneficiary, filer, or the person working it), so the review wouldn't be independent.",
-      };
-    }
+  }
+  if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
+    return {
+      status: 403,
+      error: "not_independent",
+      message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
+    };
   }
 
   if (body.duplicateOfId) {

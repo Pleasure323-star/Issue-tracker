@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/agents/audit";
 import {
   assertIndependentReviewer,
-  reviewerConflict,
+  reviewerCreditConflict,
   ReviewerNotIndependentError,
   type ReviewedBug,
 } from "@/lib/agents/independence";
@@ -61,6 +61,7 @@ const reviewedBugSelect = {
   pullRequestHeadSha: true,
   severity: true,
   beneficiaryUserId: true,
+  assigneeId: true,
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
@@ -182,16 +183,12 @@ export async function submitTestVerdict(
         field: "onBehalfOfUserId",
       };
     }
-    // #495: credit can't redirect a verdict onto this issue's own side. The
-    // credited person must be as independent as the agent's owner would be —
-    // `acceptFix` pays the reviewers through this field.
-    const creditedConflict = reviewerConflict({ id: agent.agentId, ownerUserId: onBehalfOfUserId }, bug);
-    if (creditedConflict) {
+    // #495: credit can't redirect a verdict onto this issue's own side.
+    if (reviewerCreditConflict(onBehalfOfUserId, bug as ReviewedBug)) {
       return {
         status: 403,
         error: "not_independent",
-        message:
-          "This verdict can't be credited to that person: they are on this issue's own side (reporter, beneficiary, filer, or the person working it), so the review wouldn't be independent.",
+        message: "onBehalfOfUserId must be independent of the issue's reporter, solver, and claim beneficiary.",
       };
     }
   }
