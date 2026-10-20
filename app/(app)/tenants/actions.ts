@@ -176,12 +176,17 @@ export async function createInviteAction(
   formData: FormData,
 ): Promise<CreateInviteActionResult> {
   const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, tenantId);
+  if (tenant?.archivedAt) {
+    return { ok: false, error: "Restore this tenant before creating invites." };
+  }
   if (!(await consumeRateLimit(`tenant-invite:${user.id}`, CREATE_INVITE_RATE_LIMIT)).allowed) {
     return { ok: false, error: RATE_LIMIT_MESSAGE };
   }
 
   const result = await createInvite(prisma, user, {
-    tenantId: String(formData.get("tenantId") ?? ""),
+    tenantId,
     email: formData.get("email"),
   });
   if (!result.ok) return result;
@@ -191,6 +196,7 @@ export async function createInviteAction(
     delivery = await deliverInvite(prisma, {
       invite: result.invite,
       rawToken: result.rawToken,
+      tenantId: result.tenant.id,
       tenantName: result.tenant.name,
       inviter: { id: user.id, name: user.name || user.email || "Someone" },
     });
@@ -222,12 +228,17 @@ export async function createShareLinkAction(
   formData: FormData,
 ): Promise<CreateShareLinkActionResult> {
   const user = await requireUser();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const tenant = await memberTenantById(prisma, user.id, tenantId);
+  if (tenant?.archivedAt) {
+    return { ok: false, error: "Restore this tenant before creating share links." };
+  }
   if (!(await consumeRateLimit(`tenant-share:${user.id}`, CREATE_INVITE_RATE_LIMIT)).allowed) {
     return { ok: false, error: RATE_LIMIT_MESSAGE };
   }
 
   const result = await createShareLink(prisma, user, {
-    tenantId: String(formData.get("tenantId") ?? ""),
+    tenantId,
     expiresDays: formData.get("expiresDays"),
     maxUses: formData.get("maxUses"),
     label: formData.get("label"),

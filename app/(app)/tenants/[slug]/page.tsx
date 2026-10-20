@@ -83,7 +83,8 @@ export default async function TenantPage({
   // Someone else's tenant looks exactly like no tenant: its name is never read.
   if (!tenant) notFound();
 
-  const canManage = !tenant.archivedAt && canInvite(tenant.role);
+  const roleCanInvite = canInvite(tenant.role);
+  const canManage = !tenant.archivedAt && roleCanInvite;
   const canChangeRoles =
     !tenant.archivedAt && (tenant.role === "owner" || isSuperAdmin(user.role));
   const canManageSettings = tenant.role === "owner" && !tenant.archivedAt;
@@ -269,7 +270,9 @@ export default async function TenantPage({
         )}
         {canManage ? null : (
           <p className="mt-3 text-xs text-slate-500">
-            Only owners and admins can invite people. Ask one of them to invite your teammate.
+            {roleCanInvite
+              ? "Restore this tenant to invite people again."
+              : "Only owners and admins can invite people. Ask one of them to invite your teammate."}
           </p>
         )}
       </section>

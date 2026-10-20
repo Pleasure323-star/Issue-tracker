@@ -33,12 +33,14 @@ export function availableOfferCandidates<T extends OfferCandidate>(candidates: T
   return rankOfferCandidates(candidates.filter((person) => person.activeClaims < MAX_ACTIVE_CLAIMS && !person.pendingOffer));
 }
 
-function scheduleOfferExpiry(claimId: string): void {
+/** Re-arm the expiry that releases an offer nobody accepted. Exported for the stale-claim sweep (#524). */
+export function scheduleOfferExpiry(claimId: string): void {
   setTimeout(() => { void expireOffer(claimId).catch(() => undefined); }, OFFER_TTL_MS);
 }
 
-/** Picks by active workload, then by who has waited longest since their last offer. */
-async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
+/** Picks by active workload, then by who has waited longest since their last offer.
+ * Exported for the stale-claim sweep (#524), which re-offers a reopened issue with no agent caller. */
+export async function offerNext(db: Db, caller: { agentId?: string; tenantId: string }, bug: { id: string; projectId: string; title: string; assigneeId?: string | null }, excludeUserIds: string[] = []) {
   const memberships = await db.membership.findMany({
     where: {
       tenantId: caller.tenantId,
@@ -109,9 +111,11 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
     if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
     if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
     await assertRedesignOpen(bugId, tx);
-    const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null }, select: { id: true, status: true, offeredAt: true } });
+    const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null } });
     if (current) {
-      if (current.status === "offered" && !isOfferExpired(current.offeredAt)) throw new IssueApiError(409, "This issue already has a pending offer.");
+      if (current.status === "offered" && !isOfferExpired(current.offeredAt)) {
+        return { claim: current, beneficiaryUserId: current.beneficiaryUserId, bugTitle: bug.title, created: false };
+      }
       if (current.status === "active") throw new IssueApiError(409, "This issue already has an active claim.");
       await tx.issueClaim.update({ where: { id: current.id }, data: { status: "released", releasedAt: new Date(), releaseReason: "expired" } });
       await publish(tx, { tenantId: agent.tenantId, type: "claim.released", actorAgentId: agent.agentId, bugId,
@@ -119,10 +123,12 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
     }
     const next = await offerNext(tx, agent, bug);
     if (!next) throw new IssueApiError(409, "No eligible person is available for this offer.");
-    return next;
+    return { ...next, created: true };
   });
-  notifyClaimOffered({ id: result.claim.id, bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
-  scheduleOfferExpiry(result.claim.id);
+  if (result.created) {
+    notifyClaimOffered({ id: result.claim.id, bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
+    scheduleOfferExpiry(result.claim.id);
+  }
   return result.claim;
 }
 
