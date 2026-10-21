@@ -30,6 +30,27 @@ export function bearerToken(header: string | null | undefined): string | null {
   return token && token.startsWith(API_KEY_PREFIX) ? token : null;
 }
 
+/**
+ * Whether the caller sent credentials at all (#467). `bearerToken` returns
+ * null both for "no header" and for a header carrying something unusable, so
+ * on its own it cannot tell the two apart and every malformed key was
+ * reported as a missing one - sending the agent to look at header plumbing
+ * when the real fault is the key value, which a truncated paste makes common.
+ *
+ * An empty header, or a bare scheme with nothing after it, is no credentials.
+ * Anything else was an attempt to authenticate and belongs to `invalid_key`,
+ * including a bare token sent with no scheme at all.
+ */
+const BARE_AUTH_SCHEME = /^(?:Bearer|Basic|Digest|Token|ApiKey)$/i;
+
+export function hasAuthorizationCredentials(header: string | null | undefined): boolean {
+  const value = (header ?? "").trim();
+  if (!value) return false;
+  // Treating any single word as a scheme would also swallow a scheme-less
+  // token, so only a recognised scheme on its own counts as nothing sent.
+  return !BARE_AUTH_SCHEME.test(value);
+}
+
 // No 0/O, 1/I/L or U: the code is read off one screen and typed into another.
 const USER_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const USER_CODE_LENGTH = 8;

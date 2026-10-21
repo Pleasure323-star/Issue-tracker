@@ -1,7 +1,7 @@
 import type { AgentLevel } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { bearerToken, hashSecret } from "@/lib/agents/keys";
+import { bearerToken, hasAuthorizationCredentials, hashSecret } from "@/lib/agents/keys";
 import { AgentLevelError } from "@/lib/agents/levels";
 import { AgentPlatformDisabledError, agentPlatformDisabledResponse } from "@/lib/agents/platform-gate";
 import { isAgentPlatformEnabled } from "@/lib/feature-flags";
@@ -86,8 +86,13 @@ const LAST_USED_THROTTLE_MS = 60 * 1000;
 
 export async function requireAgent(request: HeaderSource): Promise<AgentContext> {
   if (!isAgentPlatformEnabled()) throw new AgentPlatformDisabledError();
-  const raw = bearerToken(request.headers.get("authorization"));
-  if (!raw) throw new AgentAuthError("missing_key");
+  const header = request.headers.get("authorization");
+  const raw = bearerToken(header);
+  // #467: credentials that were sent but are not a usable key are invalid,
+  // not missing. Only an absent header (or a bare scheme) is `missing_key`.
+  if (!raw) {
+    throw new AgentAuthError(hasAuthorizationCredentials(header) ? "invalid_key" : "missing_key");
+  }
 
   const key = await prisma.agentApiKey.findUnique({
     where: { keyHash: hashSecret(raw) },

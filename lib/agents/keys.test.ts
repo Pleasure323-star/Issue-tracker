@@ -3,6 +3,7 @@ import {
   API_KEY_PREFIX,
   bearerToken,
   generateApiKey,
+  hasAuthorizationCredentials,
   generateUserCode,
   hashSecret,
   normalizeUserCode,
@@ -28,6 +29,30 @@ describe("agent keys (#427)", () => {
     expect(bearerToken("Bearer sk-other")).toBeNull();
     expect(bearerToken("Bearer ziki_a ziki_b")).toBeNull();
     expect(bearerToken(null)).toBeNull();
+  });
+
+  it("tells a sent-but-unusable token apart from no credentials (#467)", () => {
+    // Nothing was sent: the agent really does need to add the header.
+    expect(hasAuthorizationCredentials(null)).toBe(false);
+    expect(hasAuthorizationCredentials(undefined)).toBe(false);
+    expect(hasAuthorizationCredentials("")).toBe(false);
+    expect(hasAuthorizationCredentials("   ")).toBe(false);
+    // A scheme with nothing after it carries no credentials either.
+    expect(hasAuthorizationCredentials("Bearer")).toBe(false);
+    expect(hasAuthorizationCredentials("  Bearer  ")).toBe(false);
+    expect(hasAuthorizationCredentials("bearer")).toBe(false);
+    expect(hasAuthorizationCredentials("Basic")).toBe(false);
+
+    // Something was sent. It is unusable, but it is not missing.
+    expect(hasAuthorizationCredentials("Bearer bad")).toBe(true);
+    expect(hasAuthorizationCredentials("Bearer a b")).toBe(true);
+    expect(hasAuthorizationCredentials("Basic abc")).toBe(true);
+    expect(hasAuthorizationCredentials('Bearer "ziki_abc"')).toBe(true);
+    // A scheme-less token is still something the caller sent.
+    expect(hasAuthorizationCredentials("ziki_abc")).toBe(true);
+    expect(hasAuthorizationCredentials("garbage")).toBe(true);
+    // A key of the right shape is already handled by bearerToken.
+    expect(hasAuthorizationCredentials("Bearer ziki_abc")).toBe(true);
   });
 
   it("makes user codes that survive being retyped loosely", () => {
