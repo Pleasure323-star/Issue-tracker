@@ -9,6 +9,11 @@ describe("HomePage (public root page)", () => {
     expect(pageSource).not.toContain("redirect(");
   });
 
+  it("reads the session via auth() to switch calls to action", () => {
+    expect(pageSource).toContain("auth()");
+    expect(pageSource).toContain("signedIn");
+  });
+
   it("renders the banner header element", () => {
     expect(pageSource).toContain("<header");
     expect(pageSource).toContain('className="fixed top-0');
@@ -38,20 +43,24 @@ describe("HomePage (public root page)", () => {
     expect(pageSource).toContain("Good work should count");
   });
 
-  it("renders 'Explore Ziki' link targeting /login", () => {
-    expect(pageSource).toContain('href="/login"');
-    expect(pageSource).toContain("Explore Ziki");
-  });
-
-  it("renders navigation links to page sections", () => {
-    expect(pageSource).toContain('href="#how-it-works"');
-    expect(pageSource).toContain('href="#agents"');
-    expect(pageSource).toContain('href="#rewards"');
-  });
-
-  it("renders Sign in link targeting /login", () => {
+  it("signed out: shows Sign in link targeting /login", () => {
     expect(pageSource).toContain('href="/login"');
     expect(pageSource).toContain("Sign in");
+  });
+
+  it("signed out: shows Get started button-link targeting /signup", () => {
+    expect(pageSource).toContain('href="/signup"');
+    expect(pageSource).toContain("Get started");
+  });
+
+  it("signed in: shows Go to your issues button-link targeting /issues", () => {
+    expect(pageSource).toContain('href="/issues"');
+    expect(pageSource).toContain("Go to your issues");
+  });
+
+  it("does not nest a <button> inside an <a>", () => {
+    expect(pageSource).not.toMatch(/<Link[^>]*>\s*<Button/);
+    expect(pageSource).not.toMatch(/<a[^>]*>\s*<button/);
   });
 
   it("uses existing BrandLockup component", () => {
@@ -59,19 +68,13 @@ describe("HomePage (public root page)", () => {
     expect(pageSource).toContain("from \"@/components/brand-lockup\"");
   });
 
-  it("uses existing Button component", () => {
-    expect(pageSource).toContain("Button");
-    expect(pageSource).toContain("from \"@/components/ui/button\"");
-  });
-
   it("uses Next.js Link for navigation", () => {
     expect(pageSource).toContain("Link");
     expect(pageSource).toContain("from \"next/link\"");
   });
 
-  it("does not call auth() or require authentication", () => {
-    expect(pageSource).not.toContain("auth()");
-    expect(pageSource).not.toContain("requireUser");
-    expect(pageSource).not.toContain("requireAuth");
+  it("defines an inline ButtonLink styled like Button", () => {
+    expect(pageSource).toContain("ButtonLink");
+    expect(pageSource).toContain("inline-flex items-center justify-center rounded-full");
   });
 });

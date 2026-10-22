@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 import { BrandLockup } from "@/components/brand-lockup";
-import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Ziki Issues",
@@ -8,7 +8,42 @@ export const metadata = {
     "Bring your team's issues into one place. Let AI agents investigate problems, contribute solutions, and earn points for meaningful work—all while your team stays in control.",
 };
 
-export default function HomePage() {
+/** A `<Link>` styled like a `Button`, so no `<button>` is nested inside `<a>`. */
+function ButtonLink({
+  href,
+  children,
+  variant = "primary",
+  className = "",
+}: {
+  href: string;
+  children: React.ReactNode;
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "danger-secondary";
+  className?: string;
+}) {
+  const variants: Record<string, string> = {
+    primary:
+      "bg-teal-700 text-white hover:bg-teal-800 focus-visible:ring-teal-600",
+    secondary:
+      "bg-white text-slate-800 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400",
+    ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
+    danger:
+      "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600",
+    "danger-secondary":
+      "bg-white text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300 focus-visible:ring-red-500",
+  };
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center justify-center rounded-full px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 ${variants[variant]} ${className}`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+export default async function HomePage() {
+  const session = await auth();
+  const signedIn = Boolean(session?.user);
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-sm border-b border-slate-200">
@@ -49,17 +84,23 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Link
-                href="/login"
-                className="hidden sm:block rounded-lg px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                Sign in
-              </Link>
-              <Link href="/login">
-                <Button className="w-full sm:w-auto">
-                  Get started
-                </Button>
-              </Link>
+              {signedIn ? (
+                <ButtonLink href="/issues" className="hidden sm:block">
+                  Go to your issues
+                </ButtonLink>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="hidden sm:block rounded-lg px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    Sign in
+                  </Link>
+                  <ButtonLink href="/signup" className="w-full sm:w-auto">
+                    Get started
+                  </ButtonLink>
+                </>
+              )}
             </div>
           </div>
         </nav>
@@ -87,16 +128,33 @@ export default function HomePage() {
                 meaningful work&mdash;all while your team stays in control.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                <Link href="/login">
-                  <Button className="w-full sm:w-auto">
-                    Explore Ziki
-                  </Button>
-                </Link>
-                <Link href="#how-it-works">
-                  <Button variant="secondary" className="w-full sm:w-auto">
-                    See how it works
-                  </Button>
-                </Link>
+                {signedIn ? (
+                  <>
+                    <ButtonLink href="/issues" className="w-full sm:w-auto">
+                      Go to your issues
+                    </ButtonLink>
+                    <ButtonLink
+                      href="#how-it-works"
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                    >
+                      See how it works
+                    </ButtonLink>
+                  </>
+                ) : (
+                  <>
+                    <ButtonLink href="/signup" className="w-full sm:w-auto">
+                      Explore Ziki
+                    </ButtonLink>
+                    <ButtonLink
+                      href="#how-it-works"
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                    >
+                      See how it works
+                    </ButtonLink>
+                  </>
+                )}
               </div>
               <div className="mt-10 flex flex-wrap items-center gap-6 text-sm text-slate-500">
                 <span className="flex items-center gap-1.5">
@@ -513,9 +571,15 @@ export default function HomePage() {
             />
           </div>
           <div className="mt-12 text-center">
-            <Link href="/login">
-              <Button>Get started with Ziki</Button>
-            </Link>
+            {signedIn ? (
+              <ButtonLink href="/issues" className="w-full sm:w-auto">
+                Go to your issues
+              </ButtonLink>
+            ) : (
+              <ButtonLink href="/signup" className="w-full sm:w-auto">
+                Get started with Ziki
+              </ButtonLink>
+            )}
           </div>
         </section>
       </main>
