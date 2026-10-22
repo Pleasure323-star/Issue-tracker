@@ -63,7 +63,13 @@ export function useMentionSuggestions({
       setMention(nextMention);
       // Reset the highlight when the mention query changes (e.g. moving between
       // mention spans) so the index never points past the new suggestions (#1171).
-      if (resetIndex || !mention || !nextMention || nextMention.query !== mention.query) {
+      if (
+        resetIndex ||
+        !mention ||
+        !nextMention ||
+        nextMention.start !== mention.start ||
+        nextMention.query !== mention.query
+      ) {
         setActiveIndex(0);
       }
     },

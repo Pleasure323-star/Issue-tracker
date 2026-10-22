@@ -96,6 +96,18 @@ describe("mention span switching (#1171)", () => {
     expect(result.current.suggestions).toHaveLength(1);
   });
 
+  it("resets activeIndex when same query appears at a different span start (#1171)", () => {
+    const { result } = setupThree();
+    // Highlight the second suggestion (Alan) for the first "@a".
+    act(() => result.current.handleKeyDown(keyEvent("ArrowDown")));
+    expect(result.current.activeIndex).toBe(1);
+
+    // Move caret to a second "@a" span: same query, different start position.
+    act(() => result.current.sync("@a @a", 4));
+    expect(result.current.activeIndex).toBe(0);
+    expect(result.current.showSuggestions).toBe(true);
+  });
+
   it("inserts the clamped suggestion after moving spans", () => {
     const { result, onChange } = setupThree();
     act(() => result.current.handleKeyDown(keyEvent("ArrowDown")));
