@@ -18,7 +18,7 @@ export default async function AppNotFound() {
   return (
     <StatusPage
       code="404"
-      title="We couldn't find that issue"
+      title="We couldn't find that page"
       actions={
         <>
           <Link href="/issues" className={primaryActionClass}>
@@ -33,8 +33,8 @@ export default async function AppNotFound() {
       }
     >
       <p>
-        The link may be wrong, or the issue may have been deleted.
-        {signedIn ? null : " Some issues are only visible after you sign in."}
+        The link may be wrong, or the page may have been removed.
+        {signedIn ? null : " Some pages are only visible after you sign in."}
       </p>
     </StatusPage>
   );
