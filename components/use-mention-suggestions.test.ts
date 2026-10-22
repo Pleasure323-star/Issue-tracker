@@ -65,3 +65,57 @@ describe("mention composition keys (#757)", () => {
     expect(result.current.showSuggestions).toBe(false);
   });
 });
+
+describe("mention span switching (#1171)", () => {
+  function setupThree() {
+    const onChange = vi.fn();
+    const { result } = renderHook(() => useMentionSuggestions({
+      users: [
+        { id: "ada", name: "Ada" },
+        { id: "alan", name: "Alan" },
+        { id: "bob", name: "Bob" },
+      ],
+      value: "@a",
+      onChange,
+      textareaRef: { current: null },
+    }));
+    act(() => result.current.sync("@a", 2));
+    return { result, onChange };
+  }
+
+  it("resets activeIndex when the mention query changes span", () => {
+    const { result } = setupThree();
+    // Highlight the second suggestion (Alan) for "@a".
+    act(() => result.current.handleKeyDown(keyEvent("ArrowDown")));
+    expect(result.current.activeIndex).toBe(1);
+    expect(result.current.suggestions).toHaveLength(2);
+
+    // Move caret to a different mention span ("@b" -> only Bob matches).
+    act(() => result.current.sync("@b", 2));
+    expect(result.current.activeIndex).toBe(0);
+    expect(result.current.suggestions).toHaveLength(1);
+  });
+
+  it("inserts the clamped suggestion after moving spans", () => {
+    const { result, onChange } = setupThree();
+    act(() => result.current.handleKeyDown(keyEvent("ArrowDown")));
+    expect(result.current.activeIndex).toBe(1);
+
+    act(() => result.current.sync("@b", 2));
+    const event = keyEvent("Enter");
+    act(() => expect(result.current.handleKeyDown(event)).toBe(true));
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith("@[Bob](bob) ");
+    expect(result.current.showSuggestions).toBe(false);
+  });
+
+  it("clamps activeIndex when suggestions shrink below it", () => {
+    const { result } = setupThree();
+    act(() => result.current.handleKeyDown(keyEvent("ArrowDown")));
+    expect(result.current.activeIndex).toBe(1);
+
+    act(() => result.current.sync("@z", 2));
+    expect(result.current.suggestions).toHaveLength(0);
+    expect(result.current.activeIndex).toBe(0);
+  });
+});
