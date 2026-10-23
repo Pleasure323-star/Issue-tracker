@@ -250,7 +250,7 @@ export function AppHeader({
           <Link
             href="/dashboard"
             aria-label="Ziki"
-            className="flex items-center gap-1.5 text-sm font-semibold text-zk-text"
+            className="flex items-center gap-1 text-[11px] text-zk-text"
           >
             <Avatar name="Ziki" image={null} size="sm" variant="solid" className="shrink-0" />
             <span className="truncate">ziki</span>
