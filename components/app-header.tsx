@@ -307,6 +307,13 @@ export function AppHeader({
           New issue
         </Link>
 
+        {/* Workspace identity — design.md app shell: workspace identity lives in the top bar. */}
+        {activeWorkspace ? (
+          <span className="ml-3 flex h-10 items-center rounded-full border border-zk-border bg-zk-surface px-3 text-sm font-semibold text-zk-text">
+            {activeWorkspace.name}
+          </span>
+        ) : null}
+
         {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
             breaks the chips onto rows (no sideways scroll at 360px or 768px).
             From lg up it keeps shrink-0 so the account controls are never
