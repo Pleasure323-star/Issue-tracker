@@ -10,8 +10,16 @@ describe("refuseRoleChange", () => {
     expect(refuseRoleChange("root-1", plain, "admin")).toBeNull();
   });
 
+  it("allows promoting a plain user to super admin", () => {
+    expect(refuseRoleChange("root-1", plain, "super_admin", "super_admin")).toBeNull();
+  });
+
   it("allows demoting an admin back to user", () => {
     expect(refuseRoleChange("root-1", admin, "user")).toBeNull();
+  });
+
+  it("refuses when the actor is not a super admin", () => {
+    expect(refuseRoleChange("admin-1", plain, "admin", "admin")).toBe("actor-not-super-admin");
   });
 
   it("refuses to change the caller's own role", () => {
@@ -47,6 +55,24 @@ describe("ROLE_CHANGE_ERRORS", () => {
 });
 
 describe("changeUserRole with session rotation (#655)", () => {
+  it("escalates user to super admin, bumps sessionVersion, and logs audit", async () => {
+    const db = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: "user-1", role: "user", email: "user@zedu.test", sessionVersion: 3 }),
+        update: vi.fn().mockResolvedValue({ id: "user-1", role: "super_admin", sessionVersion: 4 }),
+      },
+    };
+
+    const result = await changeUserRole(db as never, root, {
+      targetUserId: "user-1",
+      nextRole: "super_admin",
+    });
+    expect(result).toEqual({
+      ok: true,
+      user: { id: "user-1", role: "super_admin", sessionVersion: 4 },
+    });
+  });
+
   it("escalates user to admin, bumps sessionVersion, and logs audit", async () => {
     const db = {
       user: {

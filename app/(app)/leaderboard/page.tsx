@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { paginatedTenantLeaderboard, DEFAULT_LEADERBOARD_LIMIT } from "@/lib/points/leaderboard";
-import { TARGET_POINTS } from "@/lib/points/rules";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
 import { Avatar } from "@/components/avatar";
 
 export const metadata = { title: "Leaderboard" };
@@ -26,9 +26,13 @@ export default async function LeaderboardPage({
 
   const user = await requireUser();
   const tenantId = await currentTenantIdFor(user.id);
-  const { entries: rows, total, totalPages } = tenantId
-    ? await paginatedTenantLeaderboard(prisma, tenantId, { page, limit })
-    : { entries: [], total: 0, totalPages: 0 };
+  const [{ entries: rows, total, totalPages }, platformRewards] = await Promise.all([
+    tenantId
+      ? paginatedTenantLeaderboard(prisma, tenantId, { page, limit })
+      : Promise.resolve({ entries: [], total: 0, totalPages: 0 }),
+    getPlatformRewardConfig(prisma),
+  ]);
+  const targetPoints = platformRewards.target;
 
   // A page past the end (an old link, a hand-edited URL) would otherwise show
   // "No points yet" on a leaderboard that has points. Send it to the last page.
@@ -43,7 +47,7 @@ export default async function LeaderboardPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Leaderboard</h1>
           <p className="text-sm text-slate-600">
-            Points for solving, reporting and reviewing issues. The goal is {TARGET_POINTS} points.
+            Points for solving, reporting and reviewing issues. The goal is {targetPoints} points.
           </p>
         </div>
         <Link href="/points/disputes" className="text-sm font-medium text-teal-700 hover:underline">
