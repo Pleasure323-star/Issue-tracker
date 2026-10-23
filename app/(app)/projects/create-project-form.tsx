@@ -24,11 +24,11 @@ export function CreateProjectForm({
       <div>
         <label
           htmlFor="project-name"
-          className="block text-sm font-medium text-slate-800"
+          className="block text-sm font-medium text-zk-text"
         >
           Project name
         </label>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-zk-muted">
           A product or area inside your workspace, such as a web app or iOS app.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -52,7 +52,7 @@ export function CreateProjectForm({
       <ProjectRewardRulesSection disabled={pending} defaults={defaults} />
 
       {error ? (
-        <p id="project-name-error" role="alert" className="text-sm text-red-700">
+        <p id="project-name-error" role="alert" className="text-sm text-zk-bad-fg">
           {error}
         </p>
       ) : null}
