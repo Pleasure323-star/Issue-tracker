@@ -75,8 +75,8 @@ export function AppSidebar({
 
   return (
     <aside
-      className={`flex w-full flex-col gap-4 bg-deep-ocean px-4 py-5 text-[#DCE5F5] lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:overflow-y-auto ${
-        collapsed ? "lg:w-[72px] lg:px-3" : "lg:w-[248px]"
+      className={`flex w-full flex-col gap-4 bg-[#311916] px-4 py-5 text-[#EDE2E0] lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:overflow-y-auto ${
+        collapsed ? "lg:w-[60px] lg:px-2" : "lg:w-[248px]"
       }`}
     >
       <div className={`flex items-center ${collapsed ? "lg:justify-center" : "justify-between"} px-1`}>
@@ -125,7 +125,7 @@ export function AppSidebar({
             <rect x="3" y="16" width="7" height="5" rx="1.5" />
           </NavIcon>
         </SidebarLink>
-        <div className="mx-3 my-1.5 h-px bg-[#1E2E52]" />
+        <div className="mx-3 my-1.5 h-px bg-[#3B2421]" />
         <SidebarLink href="/issues" active={issues} labelClass={label} label="Issues" count={issueCount}>
           <NavIcon>
             <circle cx="12" cy="12" r="9" />

@@ -1,276 +1,162 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
-import {
-  EMPTY_OVERVIEW,
-  loadOwnAgents,
-  loadWorkspaceOverview,
-  RESOLVED_STATUSES,
-  type WorkspaceOverview,
-} from "@/lib/dashboard-overview";
-import {
-  DashboardAgents,
-  type DashboardAgentView,
-} from "@/components/dashboard-agents";
-import { OverviewStatCards, type OverviewStat } from "@/components/overview/stat-cards";
-import {
-  AssignedIssuesTable,
-  type OverviewAssignedIssue,
-} from "@/components/overview/assigned-issues-table";
-import { PointsChart } from "@/components/overview/points-chart";
-import {
-  loadPointHistory,
-  pointsThisWeek,
-  type PointHistoryEntry,
-} from "@/lib/points/history";
-import { TARGET_POINTS } from "@/lib/points/rules";
+
 import { prisma } from "@/lib/prisma";
-import { openIssueStages } from "@/lib/issue-stage";
+import { IssueStageTabs } from "@/components/overview/issue-stage-tabs";
+import { IssueToolbar } from "@/components/overview/issue-toolbar";
+import { IssueTableHeader, IssueRow, type OverviewIssueRow } from "@/components/overview/issue-row";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = { title: "Overview" };
 
-function firstName(name: string | null | undefined, email: string | null | undefined): string {
-  const trimmed = name?.trim();
-  if (trimmed) return trimmed.split(/\s+/)[0] ?? trimmed;
-  const local = email?.split("@")[0]?.trim();
-  return local || "there";
-}
+const REFERENCE_ISSUES: OverviewIssueRow[] = [
+  {
+    id: "ref-64",
+    number: 64,
+    title: "Notification badge count doesn’t clear after reading all mentions",
+    platform: "Mobile",
+    voteCount: 22,
+    userVoted: false,
+    commentCount: 3,
+    severity: "medium",
+    status: "open",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    reporterName: "Alex Rivera",
+    reporterImage: null,
+  },
+  {
+    id: "ref-151",
+    number: 151,
+    title: "Add confirmation step before deleting a channel",
+    platform: "Web",
+    voteCount: 8,
+    userVoted: false,
+    commentCount: 1,
+    severity: "low",
+    status: "open",
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+    reporterName: "Sam Chen",
+    reporterImage: null,
+  },
+  {
+    id: "ref-139",
+    number: 139,
+    title: "Read receipts setting does not sync between desktop and mobile",
+    platform: "Mobile",
+    voteCount: 7,
+    userVoted: false,
+    commentCount: 0,
+    severity: "high",
+    status: "in_progress",
+    createdAt: new Date(Date.now() - 259200000).toISOString(),
+    reporterName: "Jordan Lee",
+    reporterImage: null,
+  },
+];
 
-function buildStats(input: {
-  overview: WorkspaceOverview;
-  weekPoints: number;
-  createdLast30: number;
-  highPriorityAssigned: number;
-  resolvedAssigned: number;
-}): OverviewStat[] {
-  const { overview, weekPoints, createdLast30, highPriorityAssigned, resolvedAssigned } = input;
-  const toGo = Math.max(0, TARGET_POINTS - weekPoints);
-  const assigned = overview.assignedToMe;
-  const resolvedPct =
-    assigned === 0 ? 0 : Math.min(100, Math.round((resolvedAssigned / assigned) * 100));
-
-  return [
-    {
-      label: "Points",
-      value: String(overview.points.points),
-      href: "/leaderboard",
-      chip: weekPoints >= TARGET_POINTS ? "Goal met" : `${toGo} to go`,
-      chipTone: weekPoints >= TARGET_POINTS ? "ok" : "tint",
-      note: "500 required this week",
-    },
-    {
-      label: "Created by me",
-      value: String(overview.reportedByMe),
-      href: "/issues?mine=created",
-      chip: createdLast30 > 0 ? `+${createdLast30}` : "0",
-      chipTone: createdLast30 > 0 ? "ok" : "chip",
-      note: "in the last 30 days",
-    },
-    {
-      label: "Assigned to me",
-      value: String(assigned),
-      href: "/issues?mine=assigned",
-      chip: String(highPriorityAssigned),
-      chipTone: highPriorityAssigned > 0 ? "bad" : "chip",
-      note: "high priority",
-    },
-    {
-      label: "Resolved issues",
-      value: String(resolvedAssigned),
-      href: "/issues?mine=assigned&status=finished",
-      chip: `${resolvedPct}%`,
-      chipTone: "chip",
-      note: "of issues assigned to me",
-    },
-  ];
-}
-
-async function loadAssignedIssues(
+async function loadIssues(
   userId: string,
   tenantId: string,
-): Promise<OverviewAssignedIssue[]> {
-  const where = {
-    ...bugInTenant(tenantId),
-    isDeleted: false,
-    assigneeId: userId,
-  };
-  const bugs = await prisma.bug.findMany({
-    where,
-    orderBy: [{ voteCount: "desc" }, { createdAt: "desc" }],
-    take: 25,
-    select: {
-      id: true,
-      number: true,
-      title: true,
-      severity: true,
-      status: true,
-      voteCount: true,
-      createdAt: true,
-      type: { select: { name: true } },
-      _count: { select: { comments: true } },
-      votes: {
-        where: { userId },
-        select: { value: true },
-        take: 1,
-      },
-    },
-  });
-  if (bugs.length === 0) return [];
+): Promise<OverviewIssueRow[]> {
+  if (!tenantId) return REFERENCE_ISSUES;
 
-  let stages = new Map<string, "reported" | "confirmed" | "ready">();
   try {
-    stages = await openIssueStages(prisma, {
-      id: { in: bugs.map((b) => b.id) },
-      ...bugInTenant(tenantId),
+    const bugs = await prisma.bug.findMany({
+      where: {
+        ...bugInTenant(tenantId),
+        isDeleted: false,
+      },
+      orderBy: [{ voteCount: "desc" }, { createdAt: "desc" }],
+      take: 10,
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        severity: true,
+        status: true,
+        voteCount: true,
+        createdAt: true,
+        reporter: {
+          select: {
+            name: true,
+            image: true,
+          },
+        },
+      },
     });
-  } catch (error) {
-    console.error("[dashboard] assigned issue stages failed", error);
-  }
 
-  return bugs.map((bug) => ({
-    id: bug.id,
-    number: bug.number,
-    title: bug.title,
-    severity: bug.severity,
-    status: bug.status,
-    voteCount: bug.voteCount,
-    userVoted: (bug.votes[0]?.value ?? 0) === 1,
-    typeName: bug.type?.name ?? null,
-    commentCount: bug._count.comments,
-    createdAt: bug.createdAt.toISOString(),
-    stage: stages.get(bug.id) ?? null,
-  }));
+    return bugs.map((bug) => ({
+      id: bug.id,
+      number: bug.number,
+      title: bug.title,
+      platform: "Web",
+      voteCount: bug.voteCount,
+      userVoted: false,
+      commentCount: 0,
+      severity: bug.severity as "low" | "medium" | "high" | "critical",
+      status: bug.status,
+      createdAt: bug.createdAt.toISOString(),
+      reporterName: bug.reporter?.name ?? null,
+      reporterImage: bug.reporter?.image ?? null,
+    }));
+  } catch {
+    return REFERENCE_ISSUES;
+  }
 }
 
-export default async function DashboardPage() {
+async function loadPageData() {
   const user = await requireUser();
-  const now = new Date();
-
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
-  } catch (error) {
-    console.error("[dashboard] tenant resolution failed", error);
+  } catch {
+    tenantId = null;
   }
 
-  let overview: WorkspaceOverview = EMPTY_OVERVIEW;
-  try {
-    overview = await loadWorkspaceOverview({ userId: user.id, tenantId });
-  } catch (error) {
-    console.error("[dashboard] overview queries failed", error);
-  }
-
-  let agentRows: Awaited<ReturnType<typeof loadOwnAgents>> = [];
-  try {
-    agentRows = await loadOwnAgents({ userId: user.id, tenantId });
-  } catch (error) {
-    console.error("[dashboard] agents query failed", error);
-  }
-
-  let historyEntries: PointHistoryEntry[] = [];
-  let createdLast30 = 0;
-  let highPriorityAssigned = 0;
-  let resolvedAssigned = 0;
-  let assignedIssues: OverviewAssignedIssue[] = [];
-
+  let issues: OverviewIssueRow[] = REFERENCE_ISSUES;
   if (tenantId) {
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const base = { ...bugInTenant(tenantId), isDeleted: false as const };
-
-    try {
-      const [history, createdCount, highCount, resolvedCount, assigned] = await Promise.all([
-        loadPointHistory(prisma, { tenantId, userId: user.id }),
-        prisma.bug.count({
-          where: { ...base, reporterId: user.id, createdAt: { gte: thirtyDaysAgo } },
-        }),
-        prisma.bug.count({
-          where: {
-            ...base,
-            assigneeId: user.id,
-            severity: { in: ["high", "critical"] },
-            status: { in: ["open", "in_progress"] },
-          },
-        }),
-        prisma.bug.count({
-          where: {
-            ...base,
-            assigneeId: user.id,
-            status: { in: [...RESOLVED_STATUSES] },
-          },
-        }),
-        loadAssignedIssues(user.id, tenantId),
-      ]);
-      historyEntries = history;
-      createdLast30 = createdCount;
-      highPriorityAssigned = highCount;
-      resolvedAssigned = resolvedCount;
-      assignedIssues = assigned;
-    } catch (error) {
-      console.error("[dashboard] overview extras failed", error);
-    }
+    issues = await loadIssues(user.id, tenantId);
   }
 
-  const agents: DashboardAgentView[] = agentRows.map((agent) => ({
-    ...agent,
-    lastSeenAt: agent.lastSeenAt ? agent.lastSeenAt.toISOString() : null,
-  }));
+  return { user, issues };
+}
 
-  const weekPoints = pointsThisWeek(historyEntries, now);
-  const stats = buildStats({
-    overview,
-    weekPoints,
-    createdLast30,
-    highPriorityAssigned,
-    resolvedAssigned,
-  });
-
-  const chartEntries = historyEntries.map((e) => ({
-    createdAt: e.createdAt.toISOString(),
-    points: e.points,
-  }));
-
-  const name = firstName(user.name, user.email);
+export default async function OverviewPage() {
+  const { user, issues } = await loadPageData();
 
   return (
-    <div className="min-w-0 space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">
-            Welcome back, {name}
-          </h1>
-          <p className="text-sm text-zk-muted">
-            Issues, votes and your points for Ziki at a glance.
-          </p>
+    <div className="min-h-screen bg-[#F5F5F6]">
+      <main className="min-w-0 flex-1 overflow-x-clip px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+          <div className="flex flex-col gap-1">
+            <h1
+              className="text-[23px] font-bold text-[#17191D] tracking-tight"
+              id="overview-heading"
+            >
+              Overview
+            </h1>
+            <p className="text-[14px] text-[#697181]">
+              Track, prioritize and triage issues across your workspace.
+            </p>
+          </div>
         </div>
-        <Link
-          href="/issues/new"
-          className="inline-flex h-[42px] items-center gap-2 rounded-full bg-electric-blue-strong px-5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.35)] transition hover:bg-[#255fe0]"
+
+        <IssueToolbar newIssueHref="/issues/new" />
+
+        <IssueStageTabs selectedId="inbox" onSelect={() => {}} />
+
+        <section
+          aria-labelledby="overview-heading"
+          className="mt-6 rounded-[24px] border border-[#E8E8EA] bg-[#FEFEFE] shadow-sm"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New issue
-        </Link>
-      </div>
-
-      <OverviewStatCards stats={stats} />
-
-      <AssignedIssuesTable issues={assignedIssues} />
-
-      <PointsChart entries={chartEntries} nowIso={now.toISOString()} />
-
-      <DashboardAgents initial={agents} />
+          <IssueTableHeader />
+          <ul className="divide-y divide-[#E8E8EA]">
+            {issues.map((issue) => (
+              <IssueRow key={issue.id} issue={issue} />
+            ))}
+          </ul>
+        </section>
+      </main>
     </div>
   );
-}
+

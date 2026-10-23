@@ -6,18 +6,18 @@
 
 :root {
   /* Light canvas from the redesign handoff. */
-  --background: #f5f7fc;
-  --foreground: #15121f;
-  --card: #ffffff;
+  --background: #F5F5F6;
+  --foreground: #17191D;
+  --card: #FEFEFE;
   color-scheme: light;
 
-  --zk-bg: #f5f7fc;
-  --zk-surface: #ffffff;
-  --zk-text: #15121f;
-  --zk-text2: #3e4a63;
-  --zk-muted: #5f6577;
-  --zk-border: #e3e8f2;
-  --zk-divider: #eef1f7;
+  --zk-bg: #F5F5F6;
+  --zk-surface: #FEFEFE;
+  --zk-text: #17191D;
+  --zk-text2: #697181;
+  --zk-muted: #858A97;
+  --zk-border: #E8E8EA;
+  --zk-divider: #E8E8EA;
   --zk-tint: #eaf2fe;
   --zk-chip: #f0f2f7;
   --zk-seg: #eef1f6;
@@ -33,6 +33,23 @@
   --zk-warn-bd: #f0cd72;
   --zk-info-bg: #e7f0ff;
   --zk-info-fg: #1d4fb8;
+
+  /* Design system tokens per design.md */
+  --color-bg-rail: #311916;
+  --color-bg-rail-hover: #513431;
+  --color-bg-surface: #FEFEFE;
+  --color-bg-page: #F5F5F6;
+  --color-bg-surface-muted: #F2F2F3;
+  --color-bg-selected: #EEF2FF;
+  --color-border-default: #E8E8EA;
+  --color-text-primary: #17191D;
+  --color-text-secondary: #697181;
+  --color-text-tertiary: #858A97;
+  --color-status-blue: #2F5BEC;
+  --color-status-orange: #F57C24;
+  --color-status-green: #12A05C;
+  --color-status-red: #F04444;
+  --color-status-purple: #D9468F;
 }
 
 @theme inline {
