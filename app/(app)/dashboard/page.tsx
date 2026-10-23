@@ -10,7 +10,6 @@ import {
   type OverviewIssue,
   type WorkspaceOverview,
 } from "@/lib/dashboard-overview";
-import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import {
   DashboardAgents,
   type DashboardAgentView,
@@ -135,20 +134,7 @@ export default async function DashboardPage() {
   const resolvedEmpty = overview.recentResolved.length === 0;
 
   return (
-    <div className="flex items-start gap-6">
-      <DashboardSidebar
-        active="overview"
-        counts={{
-          unresolved: overview.unresolvedCount,
-          assigned: overview.assignedToMe,
-          reported: overview.reportedByMe,
-        }}
-        userName={user.name ?? user.email}
-        userImage={user.image}
-        userEmail={user.email}
-      />
-
-      <div className="min-w-0 flex-1 space-y-6">
+    <div className="min-w-0 space-y-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
             Dashboard
@@ -230,7 +216,6 @@ export default async function DashboardPage() {
         </section>
 
         <DashboardAgents initial={agents} />
-      </div>
     </div>
   );
 }

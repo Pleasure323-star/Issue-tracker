@@ -88,8 +88,6 @@ import { AREA_PARAM, parseProjectAreaFilter, projectAreaFilterWhere } from "@/li
 import { intakeDetail, intakeLabel, openIssueStages, parseIssueStageView, type IssueStage } from "@/lib/issue-stage";
 import { issuePath } from "@/lib/issue-ref";
 import { PROJECT_ALL_PARAM, showsAllProjects } from "@/lib/issue-list-filters";
-import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { loadSidebarCounts } from "@/lib/dashboard-overview";
 
 /* Distinct browser-tab title; the root layout appends "· Ziki". */
 export const metadata = { title: "Issues" };
@@ -158,17 +156,6 @@ export default async function BugsPage({
   const activeProject = tenantId && projectId
     ? await prisma.project.findFirst({ where: { id: projectId, tenantId }, select: { slug: true, name: true, goal: true } }).catch(() => null)
     : null;
-
-  // The persistent sidebar's live badges. A failure leaves zeros rather than
-  // taking down the list; the counts are navigation, not page data.
-  let sidebarCounts = { unresolved: 0, assigned: 0, reported: 0 };
-  if (tenantId && userId) {
-    try {
-      sidebarCounts = await loadSidebarCounts({ userId, tenantId });
-    } catch (error) {
-      console.error("[bugs] sidebar counts failed", error);
-    }
-  }
 
   // #641: a short checklist for a new workspace's owner or admin, until it's
   // done or dismissed on this device.
@@ -637,18 +624,8 @@ export default async function BugsPage({
     low: "bg-emerald-500",
   };
 
-  // #1056: one centred list column. The persistent sidebar (#dashboard) stays
-  // on this page so Overview is always one click away.
   const page = (
-    <div className="mx-auto flex w-full max-w-5xl items-start gap-6">
-      <DashboardSidebar
-        active="issues"
-        counts={sidebarCounts}
-        userName={session?.user?.name ?? session?.user?.email}
-        userImage={session?.user?.image}
-        userEmail={session?.user?.email}
-      />
-      <div className="min-w-0 flex-1 space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       {gettingStarted ? <GettingStarted {...gettingStarted} /> : null}
       {activeProject?.goal ? (
         <section aria-labelledby="project-goal-heading" className="rounded-xl border border-slate-200 bg-card px-4 py-3">
@@ -1048,7 +1025,6 @@ export default async function BugsPage({
           )}
         </div>
       </div>
-    </div>
   );
 
   if (!canDelete || isDeletedView) return page;
