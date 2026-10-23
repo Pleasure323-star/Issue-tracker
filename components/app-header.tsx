@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AgentLevel } from "@prisma/client";
 import { SignOutButton } from "@/components/sign-out-button";
-import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
+import type { WorkspaceChoice } from "@/components/workspace-switcher";
+import { selectTenantAction } from "@/app/(app)/tenants/actions";
 import { RoleSwitcher } from "@/components/role-switcher";
 import {
   AGENT_MENU_LINKS,
@@ -112,6 +113,109 @@ function NotificationsBell({ unreadCount, active }: { unreadCount: number; activ
 
 function levelLabel(level: string) {
   return level in AGENT_LEVEL_LABELS ? AGENT_LEVEL_LABELS[level as AgentLevel] : level;
+}
+
+/**
+ * The active workspace pill for the light top bar: green status dot, workspace
+ * name and a chevron. Choosing another workspace submits selectTenantAction,
+ * the same switch the workspaces page and the sidebar switcher use.
+ */
+function HeaderWorkspaceSwitcher({
+  workspaces,
+  activeTenantId,
+}: {
+  workspaces: WorkspaceChoice[];
+  activeTenantId: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  useDismiss(open, () => setOpen(false), rootRef, buttonRef);
+
+  const counts = new Map<string, number>();
+  for (const workspace of workspaces) {
+    const key = workspace.name.toLocaleLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const shared = (name: string) => (counts.get(name.toLocaleLowerCase()) ?? 0) > 1;
+  const selected = workspaces.find((w) => w.id === activeTenantId) ?? workspaces[0];
+
+  if (!selected) {
+    return (
+      <Link
+        href="/tenants"
+        className={`inline-flex h-8 items-center rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
+      >
+        Workspaces
+      </Link>
+    );
+  }
+
+  const label = shared(selected.name) ? `${selected.name} (${selected.slug})` : selected.name;
+
+  function choose(id: string) {
+    setOpen(false);
+    if (id === selected?.id) return;
+    const form = formRef.current;
+    const input = form?.elements.namedItem("tenantId");
+    if (!form || !(input instanceof HTMLInputElement)) return;
+    input.value = id;
+    form.requestSubmit();
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <form ref={formRef} action={selectTenantAction}>
+        <input type="hidden" name="tenantId" defaultValue={selected.id} />
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className={`inline-flex h-8 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
+        >
+          <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+          <span className="truncate">{label}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {open ? (
+          <ul
+            role="listbox"
+            aria-label="Workspaces"
+            className="absolute left-0 top-full z-50 mt-1 max-h-64 w-max min-w-full max-w-56 overflow-y-auto rounded-xl border border-zk-border bg-zk-surface p-1 shadow-[0_16px_40px_rgba(11,23,51,0.16)]"
+          >
+            {workspaces.map((workspace) => {
+              const optionLabel = shared(workspace.name)
+                ? `${workspace.name} (${workspace.slug})`
+                : workspace.name;
+              const current = workspace.id === selected.id;
+              return (
+                <li key={workspace.id} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={current}
+                    onClick={() => choose(workspace.id)}
+                    className={`block w-full truncate rounded-lg px-2 py-1.5 text-left text-xs ${
+                      current
+                        ? "bg-zk-tint font-semibold text-zk-accent"
+                        : "text-zk-text hover:bg-zk-chip"
+                    }`}
+                  >
+                    {optionLabel}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </form>
+    </div>
+  );
 }
 
 function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: ShellAgent[] }) {
@@ -252,10 +356,15 @@ export function AppHeader({
             aria-label="Ziki"
             className="flex items-center gap-1 text-[11px] text-zk-text"
           >
-            <Avatar name="Ziki" image={null} size="sm" variant="solid" className="shrink-0" />
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text"
+            >
+              z
+            </span>
             <span className="truncate">ziki</span>
           </Link>
-          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
+          <HeaderWorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
         </div>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
