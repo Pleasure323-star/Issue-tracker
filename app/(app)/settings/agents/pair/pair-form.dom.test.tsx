@@ -73,12 +73,12 @@ describe("PairForm standing instructions (#431)", () => {
       />,
     );
     const input = screen.getByLabelText(/Pairing code/) as HTMLInputElement;
-    const continueBtn = screen.getByRole("button", { name: "Continue" });
-    expect(continueBtn).toBeDisabled();
+    const continueBtn = screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
+    expect(continueBtn.disabled).toBe(true);
 
     fireEvent.change(input, { target: { value: "abcd2345" } });
     expect(input.value).toBe("ABCD-2345");
-    expect(continueBtn).not.toBeDisabled();
+    expect(continueBtn.disabled).toBe(false);
   });
 
 });
