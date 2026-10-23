@@ -31,8 +31,9 @@ export function refuseRoleChange(
   }
   if (!target) return "not-found";
   if (target.id === actorId) return "self";
-  if (target.role === "super_admin") return "super-admin";
-  if (nextRole === "super_admin" && target.role === "super_admin") return "already-super-admin";
+  if (target.role === "super_admin") {
+    return nextRole === "super_admin" ? "already-super-admin" : "super-admin";
+  }
   if (nextRole === "admin" && target.role === "admin") return "already-admin";
   if (nextRole === "user" && target.role === "user") return "already-user";
   return null;

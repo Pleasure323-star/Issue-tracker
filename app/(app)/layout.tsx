@@ -17,6 +17,8 @@ import { currentTenantIdFor } from "@/lib/tenant-context";
 import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { pointTotals } from "@/lib/points/leaderboard";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
+import { TARGET_POINTS } from "@/lib/points/rules";
 
 export default async function AppLayout({
   children,
@@ -72,6 +74,12 @@ export default async function AppLayout({
   let pendingEscalationsCount = 0;
   let points = 0;
   let solvedTasks = 0;
+  let targetPoints = TARGET_POINTS;
+  try {
+    targetPoints = (await getPlatformRewardConfig(prisma)).target;
+  } catch (error) {
+    console.error("[layout] platform rewards failed", error);
+  }
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
@@ -115,6 +123,7 @@ export default async function AppLayout({
         activeTenantId={activeTenantId}
         points={points}
         solvedTasks={solvedTasks}
+        targetPoints={targetPoints}
       />
       <main
         id={MAIN_CONTENT_ID}

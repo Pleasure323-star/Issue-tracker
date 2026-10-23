@@ -33,6 +33,12 @@ describe("refuseRoleChange", () => {
     );
   });
 
+  it("reports already-super-admin for a no-op super admin promote", () => {
+    expect(
+      refuseRoleChange("root-1", { id: "root-2", role: "super_admin" }, "super_admin"),
+    ).toBe("already-super-admin");
+  });
+
   it("refuses a no-op promote", () => {
     expect(refuseRoleChange("root-1", admin, "admin")).toBe("already-admin");
   });

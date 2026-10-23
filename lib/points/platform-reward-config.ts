@@ -10,20 +10,22 @@ import {
   TRIAGER_CLEAR_POINTS,
 } from "./rules";
 
-/** Hard-coded ledger amounts — ultimate fallback when DB config is missing. */
-export function hardCodedPlatformRewards(): PlatformRewardConfig {
-  return {
-    solver: { ...SOLVER_POINTS },
-    reporter: REPORTER_POINTS,
-    reviewer: REVIEWER_POINTS,
-    confirmationReviewer: CONFIRMATION_REVIEWER_POINTS,
-    triagerClear: TRIAGER_CLEAR_POINTS,
-    duplicateMarker: DUPLICATE_MARKER_POINTS,
-    dispatcher: DISPATCHER_POINTS,
-    target: TARGET_POINTS,
-    guidelines: null,
-  };
-}
+const hardCodedValues = {
+  solver: {
+    low: SOLVER_POINTS.low,
+    medium: SOLVER_POINTS.medium,
+    high: SOLVER_POINTS.high,
+    critical: SOLVER_POINTS.critical,
+  },
+  reporter: REPORTER_POINTS,
+  reviewer: REVIEWER_POINTS,
+  confirmationReviewer: CONFIRMATION_REVIEWER_POINTS,
+  triagerClear: TRIAGER_CLEAR_POINTS,
+  duplicateMarker: DUPLICATE_MARKER_POINTS,
+  dispatcher: DISPATCHER_POINTS,
+  target: TARGET_POINTS,
+  guidelines: null as string | null,
+};
 
 export const platformRewardConfigSchema = z
   .object({
@@ -34,7 +36,7 @@ export const platformRewardConfigSchema = z
         high: z.coerce.number().int().min(0).max(10000),
         critical: z.coerce.number().int().min(0).max(10000),
       })
-      .default({ ...SOLVER_POINTS }),
+      .default({ ...hardCodedValues.solver }),
     reporter: z.coerce.number().int().min(0).max(10000).default(REPORTER_POINTS),
     reviewer: z.coerce.number().int().min(0).max(10000).default(REVIEWER_POINTS),
     confirmationReviewer: z.coerce
@@ -49,9 +51,24 @@ export const platformRewardConfigSchema = z
     target: z.coerce.number().int().min(1).max(1_000_000).default(TARGET_POINTS),
     guidelines: z.string().trim().max(2000).optional().nullable().default(null),
   })
-  .default(hardCodedPlatformRewards());
+  .default({ ...hardCodedValues });
 
 export type PlatformRewardConfig = z.infer<typeof platformRewardConfigSchema>;
+
+/** Hard-coded ledger amounts — ultimate fallback when DB config is missing. */
+export function hardCodedPlatformRewards(): PlatformRewardConfig {
+  return {
+    solver: { ...hardCodedValues.solver },
+    reporter: hardCodedValues.reporter,
+    reviewer: hardCodedValues.reviewer,
+    confirmationReviewer: hardCodedValues.confirmationReviewer,
+    triagerClear: hardCodedValues.triagerClear,
+    duplicateMarker: hardCodedValues.duplicateMarker,
+    dispatcher: hardCodedValues.dispatcher,
+    target: hardCodedValues.target,
+    guidelines: null,
+  };
+}
 
 export function parsePlatformRewardConfig(raw: unknown): PlatformRewardConfig {
   if (!raw || typeof raw !== "object") return hardCodedPlatformRewards();

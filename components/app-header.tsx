@@ -319,14 +319,16 @@ function PointsChip({
   points,
   solvedTasks,
   userId,
+  targetPoints = TARGET_POINTS,
 }: {
   points: number;
   solvedTasks: number;
   userId?: string | null;
+  targetPoints?: number;
 }) {
   if (!userId) return null;
-  const progress = pointsProgress(points, solvedTasks);
-  const label = `${points} pts of ${TARGET_POINTS}, ${solvedTasks} solved`;
+  const progress = pointsProgress(points, solvedTasks, targetPoints);
+  const label = `${points} pts of ${targetPoints}, ${solvedTasks} solved`;
   return (
     <Link
       href={`/users/${userId}`}
@@ -335,7 +337,7 @@ function PointsChip({
     >
       <span className="text-sm font-semibold tabular-nums text-white">{points}</span>
       <span className="text-xs text-sky-tint">pts</span>
-      <span className="sr-only"> of {TARGET_POINTS}, {solvedTasks} solved</span>
+      <span className="sr-only"> of {targetPoints}, {solvedTasks} solved</span>
       <span className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-white/15 md:block" aria-hidden="true">
         <span className="block h-full rounded-full bg-electric-blue" style={{ width: `${progress.pointsPercent}%` }} />
       </span>
@@ -356,6 +358,7 @@ export function AppHeader({
   activeTenantId = null,
   points = 0,
   solvedTasks = 0,
+  targetPoints = TARGET_POINTS,
 }: {
   userName?: string | null;
   /** Their picture, if their sign-in provider gave one (#290). */
@@ -374,6 +377,8 @@ export function AppHeader({
   /** This person's points in the open workspace. */
   points?: number;
   solvedTasks?: number;
+  /** Platform points goal (hard-coded fallback when unset). */
+  targetPoints?: number;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -456,7 +461,12 @@ export function AppHeader({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
-          <PointsChip points={points} solvedTasks={solvedTasks} userId={userId} />
+          <PointsChip
+            points={points}
+            solvedTasks={solvedTasks}
+            userId={userId}
+            targetPoints={targetPoints}
+          />
 
           <NotificationsBell
             unreadCount={unreadCount}

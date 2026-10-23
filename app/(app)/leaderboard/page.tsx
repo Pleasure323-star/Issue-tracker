@@ -26,10 +26,9 @@ export default async function LeaderboardPage({
 
   const user = await requireUser();
   const tenantId = await currentTenantIdFor(user.id);
+  const emptyBoard = { entries: [] as Awaited<ReturnType<typeof paginatedTenantLeaderboard>>["entries"], total: 0, totalPages: 0 };
   const [{ entries: rows, total, totalPages }, platformRewards] = await Promise.all([
-    tenantId
-      ? paginatedTenantLeaderboard(prisma, tenantId, { page, limit })
-      : Promise.resolve({ entries: [], total: 0, totalPages: 0 }),
+    tenantId ? paginatedTenantLeaderboard(prisma, tenantId, { page, limit }) : Promise.resolve(emptyBoard),
     getPlatformRewardConfig(prisma),
   ]);
   const targetPoints = platformRewards.target;
