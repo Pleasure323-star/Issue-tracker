@@ -98,16 +98,6 @@ function AgentIcon() {
   );
 }
 
-function AlertIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
-  );
-}
-
 const iconButton =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip";
 

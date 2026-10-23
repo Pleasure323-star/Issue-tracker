@@ -104,11 +104,10 @@ describe("account menu role switch", () => {
     expect(screen.getByRole("button", { name: "Agents" }).getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("renders Escalations as a link, with the pending count (#763)", () => {
-    renderHeader({ pendingEscalationsCount: 5 });
-    const link = screen.getByRole("link", { name: /escalation/i });
-    expect(link.getAttribute("href")).toBe("/escalations");
-    expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
+  it("does not render Escalations in the bar (moved to the sidebar)", () => {
+    renderHeader();
+    const header = document.querySelector("header");
+    expect(header?.querySelector('a[href="/escalations"]')).toBeNull();
   });
 
   it("does not put a Workspace menu in the bar", () => {
@@ -130,7 +129,6 @@ describe("account menu role switch", () => {
       points: 0,
       solvedTasks: 0,
       unreadCount: 3,
-      pendingEscalationsCount: 5,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
     const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });

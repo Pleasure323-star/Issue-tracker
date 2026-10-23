@@ -132,6 +132,7 @@ export default async function AppLayout({
       <SkipLink />
       <AppSidebar
         issueCount={issueCount}
+        pendingEscalationsCount={pendingEscalationsCount}
         workspaces={workspaces}
         activeTenantId={activeTenantId}
       />
@@ -143,7 +144,6 @@ export default async function AppLayout({
           isRealSuperAdmin={user.isRealSuperAdmin}
           isRealAdmin={user.isRealAdmin}
           unreadCount={unreadCount}
-          pendingEscalationsCount={pendingEscalationsCount}
           userId={user.id}
           workspaces={workspaces}
           activeTenantId={activeTenantId}

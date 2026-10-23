@@ -47,12 +47,34 @@ function NavIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
+function EscalationIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      width="19"
+      height="19"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      {children}
+    </svg>
+  );
+}
+
 export function AppSidebar({
   issueCount,
+  pendingEscalationsCount = 0,
   workspaces,
   activeTenantId,
 }: {
   issueCount: number;
+  /** Pending escalation count shown on the Escalations rail tile. */
+  pendingEscalationsCount?: number;
   workspaces: WorkspaceChoice[];
   activeTenantId: string | null;
 }) {
@@ -71,6 +93,7 @@ export function AppSidebar({
   const overview = isNavItemActive(pathname, "/dashboard");
   const issues = isNavItemActive(pathname, "/issues");
   const team = isNavItemActive(pathname, "/settings/team");
+  const escalations = isNavItemActive(pathname, "/escalations");
   const label = collapsed ? "lg:sr-only" : "";
 
   return (
@@ -139,6 +162,19 @@ export function AppSidebar({
             <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
             <path d="M16 3.1a4 4 0 0 1 0 7.8" />
           </NavIcon>
+        </SidebarLink>
+        <SidebarLink
+          href="/escalations"
+          active={escalations}
+          labelClass={label}
+          label="Escalations"
+          count={pendingEscalationsCount > 0 ? pendingEscalationsCount : undefined}
+        >
+          <EscalationIcon>
+            <path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </EscalationIcon>
         </SidebarLink>
       </nav>
     </aside>
