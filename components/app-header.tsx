@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AgentLevel } from "@prisma/client";
 import { SignOutButton } from "@/components/sign-out-button";
-import type { WorkspaceChoice } from "@/components/workspace-switcher";
+import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import { RoleSwitcher } from "@/components/role-switcher";
 import {
   AGENT_MENU_LINKS,
@@ -18,8 +18,7 @@ import {
 import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { Avatar } from "@/components/avatar";
-import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
-import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { AccountThemeSelector } from "@/components/theme-toggle";
 
 const linkFocus =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2";
@@ -61,19 +60,6 @@ function PlusIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function TrophyIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" />
-      <path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8" />
-      <path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
     </svg>
   );
 }
@@ -207,38 +193,6 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
-function PointsChip({
-  points,
-  solvedTasks,
-  userId,
-  targetPoints = TARGET_POINTS,
-}: {
-  points: number;
-  solvedTasks: number;
-  userId?: string | null;
-  targetPoints?: number;
-}) {
-  if (!userId) return null;
-  const progress = pointsProgress(points, solvedTasks, targetPoints);
-  return (
-    <Link
-      href={`/users/${userId}`}
-      className={`inline-flex h-10 items-center gap-1.5 rounded-full border border-zk-border px-3.5 text-sm text-zk-text ${linkFocus}`}
-    >
-      <span className="text-electric-blue">
-        <TrophyIcon />
-      </span>
-      <span className="font-extrabold tabular-nums">{points}</span>
-      <span className="text-zk-muted">pts</span>
-      <span className="sr-only">
-        {" "}
-        of {targetPoints}, {solvedTasks} solved
-      </span>
-      <span className="sr-only">{progress.pointsPercent}%</span>
-    </Link>
-  );
-}
-
 export function AppHeader({
   userName,
   userImage,
@@ -250,8 +204,6 @@ export function AppHeader({
   workspaces = [],
   activeTenantId = null,
   points = 0,
-  solvedTasks = 0,
-  targetPoints = TARGET_POINTS,
   rank = null,
   agents = [],
   reportFormUrl,
@@ -266,9 +218,6 @@ export function AppHeader({
   workspaces?: WorkspaceChoice[];
   activeTenantId?: string | null;
   points?: number;
-  solvedTasks?: number;
-  /** Platform points goal (hard-coded fallback when unset). */
-  targetPoints?: number;
   rank?: number | null;
   agents?: ShellAgent[];
   reportFormUrl?: string;
@@ -288,8 +237,6 @@ export function AppHeader({
 
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
-  const onNewIssue =
-    pathname?.replace(/\/+$/, "") === "/issues/new" || pathname?.replace(/\/+$/, "") === "/bugs/new";
   const effectiveRole: AppRole = role ?? "user";
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
@@ -297,118 +244,112 @@ export function AppHeader({
     // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
     // and a header that tall pinned to the top covers the page under it.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-        <Link
-          href="/issues/new"
-          aria-current={onNewIssue ? "page" : undefined}
-          className={`inline-flex h-10 items-center gap-2 rounded-full bg-electric-blue-strong px-4 text-sm font-bold text-white shadow-[0_8px_20px_rgba(46,111,239,0.30)] ${linkFocus}`}
-        >
-          <PlusIcon />
-          New issue
-        </Link>
+      {/* Top bar: brand + workspace on the left, agents + notifications on the right. */}
+      <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard"
+            aria-label="Ziki"
+            className="flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3 py-1 text-sm font-semibold text-zk-text hover:bg-zk-chip"
+          >
+            <Avatar name="Ziki" image={null} size="sm" variant="solid" className="shrink-0" />
+            <span className="truncate">Ziki</span>
+          </Link>
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
+        </div>
 
-        {/* Workspace identity — design.md app shell: workspace identity lives in the top bar. */}
-        {activeWorkspace ? (
-          <span className="ml-3 flex h-10 items-center rounded-full border border-zk-border bg-zk-surface px-3 text-sm font-semibold text-zk-text">
-            {activeWorkspace.name}
-          </span>
-        ) : null}
-
-        {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
-            breaks the chips onto rows (no sideways scroll at 360px or 768px).
-            From lg up it keeps shrink-0 so the account controls are never
-            squeezed. */}
-        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3 lg:shrink-0">
-          <PointsChip
-            points={points}
-            solvedTasks={solvedTasks}
-            userId={userId}
-            targetPoints={targetPoints}
-          />
-
+        <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
-          <ThemeToggle />
           <NotificationsBell unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
+        </div>
+      </div>
 
-          <div ref={accountRef} className="relative">
-            <button
-              ref={accountButtonRef}
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded={accountOpen}
-              aria-controls="account-menu"
-              onClick={() => setAccountOpen((open) => !open)}
-              className={`inline-flex h-11 items-center gap-1.5 rounded-full border border-zk-border py-0.5 pl-0.5 pr-2 text-zk-text ${linkFocus}`}
-            >
-              <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} image={userImage} size="md" variant="solid" />
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
-              </svg>
-            </button>
-
-            {accountOpen ? (
-              <div
-                id="account-menu"
-                role="menu"
-                aria-label="Account"
-                className="absolute right-0 top-[54px] z-50 flex w-[300px] max-w-[calc(100vw-2rem)] origin-top-right flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)] motion-safe:animate-[header-pop_120ms_ease-out]"
-              >
-                <AccountSummary
-                  userName={userName}
-                  userImage={userImage}
-                  realRole={realRole}
-                  points={points}
-                  rank={rank}
-                />
-                {canSwitchRole ? (
-                  <div className="border-t border-zk-divider px-2 py-2.5">
-                    <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
-                  </div>
-                ) : null}
-                <AccountThemeSelector />
-                <div className="mx-2 h-px bg-zk-divider" />
-                <MenuLink href={SWITCH_TENANT_LINK.href} active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}>
-                  <span className="flex-1">{SWITCH_TENANT_LINK.label}</span>
-                  {activeWorkspace ? (
-                    <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
-                      {activeWorkspace.name}
-                    </span>
-                  ) : null}
-                </MenuLink>
-                <MenuLink href="/leaderboard" active={isNavItemActive(pathname, "/leaderboard")}>
-                  Leaderboard
-                </MenuLink>
-                {isAdmin(effectiveRole) ? (
-                  <MenuLink href="/admin/dashboard" active={isNavItemActive(pathname, "/admin/dashboard")}>
-                    Dashboard
-                  </MenuLink>
-                ) : null}
-                {isSuperAdmin(role) ? (
-                  <MenuLink href="/admin/users" active={isNavItemActive(pathname, "/admin/users")}>
-                    Admins
-                  </MenuLink>
-                ) : null}
-                <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
-                  Profile
-                </MenuLink>
-                <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
-                  Settings
-                </MenuLink>
-                <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
-                  Docs & /llms.txt
-                </MenuLink>
-                {reportFormUrl ? (
-                  <MenuLink href={reportFormUrl}>Report issue</MenuLink>
-                ) : null}
-                <div className="mx-2 h-px bg-zk-divider" />
-                <SignOutButton
-                  userId={userId}
-                  className={`${linkFocus} font-bold text-zk-bad-fg hover:bg-zk-bad-soft`}
-                />
-              </div>
+      {/* User chip — avatar, name, points and the account menu. */}
+      <div className="flex items-center gap-3 px-4 pb-3 sm:px-6">
+        <div ref={accountRef} className="relative">
+          <button
+            ref={accountButtonRef}
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            aria-controls="account-menu"
+            onClick={() => setAccountOpen((open) => !open)}
+            className={`inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip ${linkFocus}`}
+          >
+            <span className="sr-only">Account menu for {userName}</span>
+            <Avatar name={userName} image={userImage} size="sm" variant="solid" />
+            <span className="truncate font-semibold text-zk-text">{userName}</span>
+            {userId && points > 0 ? (
+              <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
+                {points} pts
+              </span>
             ) : null}
-          </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+            </svg>
+          </button>
+
+          {accountOpen ? (
+            <div
+              id="account-menu"
+              role="menu"
+              aria-label="Account"
+              className="absolute right-0 top-full mt-1 z-50 flex w-[300px] max-w-[calc(100vw-2rem)] origin-top flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)] motion-safe:animate-[header-pop_120ms_ease-out]"
+            >
+              <AccountSummary
+                userName={userName}
+                userImage={userImage}
+                realRole={realRole}
+                points={points}
+                rank={rank}
+              />
+              {canSwitchRole ? (
+                <div className="border-t border-zk-divider px-2 py-2.5">
+                  <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
+                </div>
+              ) : null}
+              <AccountThemeSelector />
+              <div className="mx-2 h-px bg-zk-divider" />
+              <MenuLink href={SWITCH_TENANT_LINK.href} active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}>
+                <span className="flex-1">{SWITCH_TENANT_LINK.label}</span>
+                {activeWorkspace ? (
+                  <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
+                    {activeWorkspace.name}
+                  </span>
+                ) : null}
+              </MenuLink>
+              <MenuLink href="/leaderboard" active={isNavItemActive(pathname, "/leaderboard")}>
+                Leaderboard
+              </MenuLink>
+              {isAdmin(effectiveRole) ? (
+                <MenuLink href="/admin/dashboard" active={isNavItemActive(pathname, "/admin/dashboard")}>
+                  Dashboard
+                </MenuLink>
+              ) : null}
+              {isSuperAdmin(role) ? (
+                <MenuLink href="/admin/users" active={isNavItemActive(pathname, "/admin/users")}>
+                  Admins
+                </MenuLink>
+              ) : null}
+              <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
+                Profile
+              </MenuLink>
+              <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
+                Settings
+              </MenuLink>
+              <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
+                Docs & /llms.txt
+              </MenuLink>
+              {reportFormUrl ? (
+                <MenuLink href={reportFormUrl}>Report issue</MenuLink>
+              ) : null}
+              <div className="mx-2 h-px bg-zk-divider" />
+              <SignOutButton
+                userId={userId}
+                className={`${linkFocus} font-bold text-zk-bad-fg hover:bg-zk-bad-soft`}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
     </header>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
@@ -117,36 +117,34 @@ describe("account menu role switch", () => {
   });
 
   it("shows this person's points in the bar", () => {
-    renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
-    const link = screen.getByRole("link", { name: /128 pts of 500, 4 solved/i });
-    expect(link.getAttribute("href")).toBe("/users/ada");
-    expect(link.textContent).toContain("128");
+    renderHeader({ userId: "ada", points: 128 });
+    expect(screen.getByText(/128 pts/)).toBeTruthy();
   });
 
   it("keeps each control's visible text inside its accessible name", () => {
     const { container } = renderHeader({
       userId: "ada",
       points: 0,
-      solvedTasks: 0,
       unreadCount: 3,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
-    const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
+    const sidebar = container.querySelector("aside");
+    const workspace = within(sidebar!).getByRole("button", { name: /active workspace, ziki/i });
     expect(workspace.getAttribute("aria-label")).toBeNull();
     expect(workspace.textContent).toContain("Ziki");
   });
 
   it("switches the active workspace as soon as one is chosen", async () => {
     const user = userEvent.setup();
-    renderHeader({
+    const { container } = renderHeader({
       workspaces: [
         { id: "t1", name: "Ziki", slug: "ziki" },
         { id: "t2", name: "Acme", slug: "acme" },
       ],
       activeTenantId: "t1",
     });
-
-    await user.click(screen.getByRole("button", { name: /active workspace, ziki/i }));
+    const sidebar = container.querySelector("aside");
+    await user.click(within(sidebar!).getByRole("button", { name: /active workspace, ziki/i }));
     await user.click(screen.getByRole("option", { name: "Acme" }));
 
     expect(selectTenant).toHaveBeenCalledTimes(1);
@@ -155,21 +153,23 @@ describe("account menu role switch", () => {
   });
 
   it("links to workspaces when the person has none", () => {
-    renderHeader({ workspaces: [], activeTenantId: null });
-    expect(screen.queryByRole("button", { name: /active workspace/i })).toBeNull();
-    expect(screen.getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
+    const { container: rendered } = renderHeader({ workspaces: [], activeTenantId: null });
+    const sidebar = rendered.querySelector("aside");
+    expect(within(sidebar!).queryByRole("button", { name: /active workspace/i })).toBeNull();
+    expect(within(sidebar!).getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
   });
 
   it("shows the slug when two workspaces share a name", async () => {
     const user = userEvent.setup();
-    renderHeader({
+    const { container: rendered } = renderHeader({
       workspaces: [
         { id: "t1", name: "Acme", slug: "acme" },
         { id: "t2", name: "Acme", slug: "acme-eu" },
       ],
       activeTenantId: "t1",
     });
-    const trigger = screen.getByRole("button", { name: /active workspace, acme \(acme\)/i });
+    const sidebar = rendered.querySelector("aside");
+    const trigger = within(sidebar!).getByRole("button", { name: /active workspace, acme \(acme\)/i });
     expect(trigger.getAttribute("aria-label")).toBeNull();
     await user.click(trigger);
     expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();
@@ -188,14 +188,7 @@ describe("account menu role switch", () => {
   });
 });
 
-describe("theme toggle in header (#659)", () => {
-  it("renders the theme toggle button in the header toolbar", () => {
-    renderHeader();
-    const toggle = screen.getByTestId("theme-toggle");
-    expect(toggle).toBeTruthy();
-    expect(toggle.getAttribute("aria-label")).toMatch(/switch to (dark|light) mode/i);
-  });
-
+describe("theme options in account menu (#659)", () => {
   it("renders the theme options in the account menu", async () => {
     const user = userEvent.setup();
     renderHeader();

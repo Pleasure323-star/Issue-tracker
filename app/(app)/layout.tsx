@@ -18,8 +18,6 @@ import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { loadOwnAgents, loadSidebarCounts } from "@/lib/dashboard-overview";
 import { pointTotals, tenantRankFor } from "@/lib/points/leaderboard";
-import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
-import { TARGET_POINTS } from "@/lib/points/rules";
 
 export default async function AppLayout({
   children,
@@ -74,16 +72,9 @@ export default async function AppLayout({
 
   let pendingEscalationsCount = 0;
   let points = 0;
-  let solvedTasks = 0;
   let rank: number | null = null;
   let issueCount = 0;
   let shellAgents: { id: string; name: string; level: string }[] = [];
-  let targetPoints = TARGET_POINTS;
-  try {
-    targetPoints = (await getPlatformRewardConfig(prisma)).target;
-  } catch (error) {
-    console.error("[layout] platform rewards failed", error);
-  }
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
@@ -93,7 +84,6 @@ export default async function AppLayout({
     try {
       const totals = await pointTotals(prisma, tenantId, user.id);
       points = totals.points;
-      solvedTasks = totals.solvedTasks;
     } catch (error) {
       console.error("[layout] points failed", error);
     }
@@ -148,8 +138,6 @@ export default async function AppLayout({
           workspaces={workspaces}
           activeTenantId={activeTenantId}
           points={points}
-          solvedTasks={solvedTasks}
-          targetPoints={targetPoints}
           rank={rank}
           agents={shellAgents}
           reportFormUrl={REPORT_FORM_URL}
