@@ -250,10 +250,10 @@ export function AppHeader({
           <Link
             href="/dashboard"
             aria-label="Ziki"
-            className="flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3 py-1 text-sm font-semibold text-zk-text hover:bg-zk-chip"
+            className="flex items-center gap-1.5 text-sm font-semibold text-zk-text"
           >
             <Avatar name="Ziki" image={null} size="sm" variant="solid" className="shrink-0" />
-            <span className="truncate">Ziki</span>
+            <span className="truncate">ziki</span>
           </Link>
           <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
         </div>
@@ -280,7 +280,7 @@ export function AppHeader({
             <Avatar name={userName} image={userImage} size="sm" variant="solid" />
             <span className="truncate font-semibold text-zk-text">{userName}</span>
             {userId && points > 0 ? (
-              <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
+              <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
                 {points} pts
               </span>
             ) : null}
