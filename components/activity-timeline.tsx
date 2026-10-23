@@ -51,7 +51,7 @@ export function ActivityTimeline({
     return (
       <section className="rounded-[20px] border border-zk-border bg-zk-surface p-5">
         <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
-          Activity · {total}
+          Activity ({total})
         </h2>
         <p className="mt-1 text-xs text-zk-muted">
           Read-only history of changes on this issue.
@@ -66,7 +66,7 @@ export function ActivityTimeline({
         <summary className="cursor-pointer list-none select-none -m-1 rounded-md p-1 hover:bg-zk-chip/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue-strong">
           <span className="flex items-center justify-between gap-2">
             <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
-              Activity · {total}
+              Activity ({total})
             </h2>
             <span
               aria-hidden="true"

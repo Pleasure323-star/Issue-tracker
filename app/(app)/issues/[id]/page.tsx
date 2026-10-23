@@ -1178,4 +1178,3 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
     </div>
   );
 }
-}

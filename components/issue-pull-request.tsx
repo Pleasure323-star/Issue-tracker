@@ -28,7 +28,7 @@ export function IssuePullRequest({ pullRequestUrl }: IssuePullRequestProps) {
     <section className="rounded-[20px] border border-zk-border bg-zk-surface p-5" data-testid="attached-pr-section">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-xs font-bold uppercase tracking-[0.08em] text-zk-muted">
-          Pull request
+          GitHub Pull Request
         </h2>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-zk-warn-bg px-2.5 py-0.5 text-[11px] font-bold text-zk-warn-fg">
           <span className="h-1.5 w-1.5 rounded-full bg-current" />
