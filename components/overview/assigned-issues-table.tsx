@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Severity, Status } from "@prisma/client";
 import { OverviewVote } from "@/components/overview/overview-vote";
 import { formatIssueNumber } from "@/lib/issue-number";
+import { issuePath } from "@/lib/issue-ref";
 import { formatShortAge } from "@/lib/format";
 import { issueStageLabels, type IssueStage } from "@/lib/issue-stage";
 import { severityLabel, statusLabels } from "@/lib/labels";
@@ -132,7 +133,7 @@ export function AssignedIssuesTable({ issues }: { issues: OverviewAssignedIssue[
                       voted={issue.userVoted}
                     />
                     <Link
-                      href={`/issues/${issue.id}`}
+                      href={issuePath(issue.number)}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left text-zk-text"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zk-tint text-zk-accent">

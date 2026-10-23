@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   WEEKLY_POINTS_TARGET,
   buildPointsSeries,
@@ -91,7 +91,6 @@ export function PointsChart({
   const [draftFrom, setDraftFrom] = useState("");
   const [draftTo, setDraftTo] = useState("");
   const [datesOpen, setDatesOpen] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
   const history: PointHistoryEntry[] = useMemo(
     () =>
@@ -153,7 +152,7 @@ export function PointsChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative" ref={popoverRef}>
+          <div className="relative">
             <button
               type="button"
               aria-haspopup="dialog"
