@@ -10,6 +10,10 @@ import { ProjectAreasManager } from "./areas-manager";
 import { ProjectApprovalRulesSection } from "./approval-rules";
 import { WorkflowSettingsForm } from "./workflow-settings-form";
 import { workflowValues } from "@/lib/workflow-config";
+import {
+  getPlatformRewardConfig,
+  projectDefaultsFromPlatform,
+} from "@/lib/points/platform-rewards";
 
 export const metadata = { title: "Project settings" };
 
@@ -39,7 +43,7 @@ export default async function ProjectSettingsPage({
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: { id: true, name: true, slug: true, description: true, paths: true },
   });
-  const [issueTypes, approvalRules] = await Promise.all([
+  const [issueTypes, approvalRules, platformRewards] = await Promise.all([
     prisma.issueType.findMany({
       where: { tenantId, isActive: true },
       select: { id: true, name: true },
@@ -55,7 +59,9 @@ export default async function ProjectSettingsPage({
       include: { issueType: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     }),
+    getPlatformRewardConfig(prisma),
   ]);
+  const platformDefaults = projectDefaultsFromPlatform(platformRewards);
   const { github } = await searchParams;
 
   return (
@@ -69,7 +75,7 @@ export default async function ProjectSettingsPage({
       {github === "connected" ? <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">GitHub App installation connected.</p> : null}
       {github === "unavailable" ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">The GitHub App is not configured. Set GITHUB_APP_SLUG before connecting it.</p> : null}
       <section className="space-y-5 rounded-xl border border-slate-200 bg-card p-4 sm:p-6">
-        <ProjectSettingsForm project={project} />
+        <ProjectSettingsForm project={project} defaults={platformDefaults} />
         <div className="border-t border-slate-200 pt-5">
           <h2 className="text-base font-semibold text-slate-900">GitHub App</h2>
           <p className="mt-1 text-sm text-slate-600">Installation ID: {project.githubInstallationId ?? "Not connected"}. No access token is stored.</p>

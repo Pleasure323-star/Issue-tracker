@@ -89,9 +89,8 @@ export async function awardSolver(db: Db, issue: ResolvedIssue): Promise<boolean
       });
       projectId = bug?.projectId;
     }
-    if (projectId && "project" in db) {
-      rewardConfig = await getProjectRewardConfig(db, projectId);
-    }
+    // Always resolve through platform → hard-coded when projectId is missing.
+    rewardConfig = await getProjectRewardConfig(db, projectId);
   }
 
   const entry = solverAward({ ...issue, rewardConfig });

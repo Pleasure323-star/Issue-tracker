@@ -61,7 +61,8 @@ export async function savePlatformRewardConfig(
   return parsed;
 }
 
-function projectDefaultsFromPlatform(platform: PlatformRewardConfig): ProjectRewardConfig {
+/** Project-shaped defaults derived from platform (or hard-coded) amounts. */
+export function projectDefaultsFromPlatform(platform: PlatformRewardConfig): ProjectRewardConfig {
   return {
     solver: { ...platform.solver },
     reporter: platform.reporter,

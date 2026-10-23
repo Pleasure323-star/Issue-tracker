@@ -3,15 +3,28 @@ import type { ProjectRewardConfig } from "@/lib/points/project-rewards";
 
 interface ProjectRewardRulesDisplayProps {
   rewardConfig?: ProjectRewardConfig | null;
+  /** Effective defaults (platform → hard-coded) when the project has no override. */
+  defaults?: ProjectRewardConfig | null;
+  /** True when the project stored its own rewardConfig. */
+  customized?: boolean;
 }
 
 export function ProjectRewardRulesDisplay({
   rewardConfig,
+  defaults = null,
+  customized,
 }: ProjectRewardRulesDisplayProps) {
-  const solver = rewardConfig?.solver ?? SOLVER_POINTS;
-  const reporter = rewardConfig?.reporter ?? REPORTER_POINTS;
-  const reviewer = rewardConfig?.reviewer ?? REVIEWER_POINTS;
-  const guidelines = rewardConfig?.guidelines;
+  const fallback = defaults ?? {
+    solver: { ...SOLVER_POINTS },
+    reporter: REPORTER_POINTS,
+    reviewer: REVIEWER_POINTS,
+    guidelines: null,
+  };
+  const solver = rewardConfig?.solver ?? fallback.solver;
+  const reporter = rewardConfig?.reporter ?? fallback.reporter;
+  const reviewer = rewardConfig?.reviewer ?? fallback.reviewer;
+  const guidelines = rewardConfig?.guidelines ?? fallback.guidelines;
+  const isCustom = customized ?? Boolean(rewardConfig);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-card p-4 sm:p-5">
@@ -19,7 +32,7 @@ export function ProjectRewardRulesDisplay({
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">
           Reward & Points Rules
         </h3>
-        {rewardConfig ? (
+        {isCustom ? (
           <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 border border-teal-200">
             Custom Project Scheme
           </span>

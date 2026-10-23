@@ -23,6 +23,8 @@ export async function savePlatformRewardsAction(
     await savePlatformRewardConfig(prisma, config, actor.id);
     revalidatePath("/admin/rewards");
     revalidatePath("/leaderboard");
+    revalidatePath("/projects");
+    revalidatePath("/", "layout");
     return { message: "Platform point amounts saved. New awards use these values." };
   } catch (error) {
     console.error("[admin/rewards] save failed", error);
