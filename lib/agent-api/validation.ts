@@ -120,6 +120,7 @@ const reviewedBugSelect = {
   duplicateOfId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
+  confirmed: true,
   claims: { select: { status: true, releasedAt: true, beneficiaryUserId: true, agent: { select: { ownerUserId: true } } } },
 } satisfies Prisma.BugSelect;
 
@@ -157,20 +158,29 @@ async function latestRevisionAt(db: Db, bug: LoadedBug): Promise<Date | null> {
 /**
  * People credited for accepts of kind `real` that still count, oldest first.
  * One per owner: a second agent of the same person does not add a credit.
+ *
+ * Before the issue is first confirmed, all accepts count regardless of
+ * intervening edits (#528). The `latestRevisionAt` filter only applies once
+ * `bug.confirmed` is true, so an edit can't strand pre-edit accepts and make
+ * re-confirmation impossible.
  */
 async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<string[]> {
   const dbDelegates = db as unknown as OptionalDbDelegates;
-  const latestRevision = await latestRevisionAt(db, bug);
 
   if (!dbDelegates.issueValidation?.findMany) return [];
 
+  // When the issue is already confirmed, only accepts after the latest
+  // revision count. Before first confirmation, every accept counts (#528).
+  const where: Record<string, unknown> = { bugId: bug.id, kind: "real", verdict: "accept" };
+  if (bug.confirmed === true) {
+    const latestRevision = await latestRevisionAt(db, bug);
+    if (latestRevision) {
+      where.createdAt = { gt: latestRevision };
+    }
+  }
+
   const accepts = await db.issueValidation.findMany({
-    where: {
-      bugId: bug.id,
-      kind: "real",
-      verdict: "accept",
-      ...(latestRevision ? { createdAt: { gt: latestRevision } } : {}),
-    },
+    where,
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
@@ -181,6 +191,7 @@ async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<str
   });
   const undone = await undoneValidationIds(db, bug);
   const reviewed: ReviewedBug = bug;
+
   const owners = new Set<string>();
   const credited: string[] = [];
   for (const { id, onBehalfOfUserId, agent } of accepts) {
@@ -207,18 +218,25 @@ async function countedConfirmations(db: Db, bug: LoadedBug): Promise<number> {
  * and found none — a `duplicate`-kind validation with verdict `reject`.
  * Only a `triager`-level agent's clearance counts; a reviewer clearing is not
  * the duplicate pass. The same independence rules apply as for reviewers.
+ *
+ * Before first confirmation, the clearance counts regardless of intervening
+ * edits (#528); once `bug.confirmed` is true, only clears after the latest
+ * revision count.
  */
 async function isTriageCleared(db: Db, bug: LoadedBug): Promise<boolean> {
   const dbDelegates = db as unknown as OptionalDbDelegates;
   if (!dbDelegates.issueValidation?.findMany) return false;
-  const latestRevision = await latestRevisionAt(db, bug);
+
+  const where: Record<string, unknown> = { bugId: bug.id, kind: "duplicate", verdict: "reject" };
+  if (bug.confirmed === true) {
+    const latestRevision = await latestRevisionAt(db, bug);
+    if (latestRevision) {
+      where.createdAt = { gt: latestRevision };
+    }
+  }
+
   const clears = await db.issueValidation.findMany({
-    where: {
-      bugId: bug.id,
-      kind: "duplicate",
-      verdict: "reject",
-      ...(latestRevision ? { createdAt: { gt: latestRevision } } : {}),
-    },
+    where,
     select: {
       id: true,
       agentId: true,
@@ -439,6 +457,9 @@ export async function submitValidation(
         (await countedConfirmations(tx, bug)) >= confirmationsNeeded &&
         (await isTriageCleared(tx, bug));
       const newlyConfirmed = confirmed && !wasConfirmed;
+      if (newlyConfirmed) {
+        await tx.bug.update({ where: { id: bug.id }, data: { confirmed: true } });
+      }
       const duplicate = await isDuplicate(tx, bug);
       if (body.kind === "duplicate") {
         // The duplicate pass pays its own role (#428): 1 for clearing a report

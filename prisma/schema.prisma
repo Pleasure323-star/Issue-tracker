@@ -340,6 +340,10 @@ model Bug {
   /// Head commit of that pull request when it was linked (#489). Acceptance
   /// and the merge gate bind to this exact commit, not just the PR number.
   pullRequestHeadSha String?
+  /// Set to true once the issue has been confirmed (independent real accepts
+  /// plus triage clearance). Used to decide whether pre-edit validations
+  /// still count toward re-confirmation (#528).
+  confirmed          Boolean          @default(false)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   reporter          User               @relation("BugReporter", fields: [reporterId], references: [id])

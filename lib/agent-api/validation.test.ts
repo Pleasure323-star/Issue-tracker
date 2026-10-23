@@ -63,6 +63,7 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     duplicateOfId: null,
     createdByAgentId: null,
     createdByAgent: null,
+    confirmed: false,
     claims: [],
     ...overrides,
   };
@@ -509,6 +510,9 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     // Initially confirmed
     expect(await isConfirmed("bug1")).toBe(true);
 
+    // Persist confirmed state (as submitValidation would on newlyConfirmed)
+    db.bug.findUnique.mockResolvedValue(bugRow({ confirmed: true }));
+
     // Issue was edited at tEdit (after t0)
     db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
 
@@ -524,6 +528,32 @@ describe("confirmation: the two-reviewer rule (#433)", () => {
     state.agents.r1_new = { id: "r1_new", ownerUserId: "rob" };
     state.agents.r2_new = { id: "r2_new", ownerUserId: "sam" };
 
+    expect(await isConfirmed("bug1")).toBe(true);
+  });
+
+  it("confirms an issue when accepts span an edit before first confirmation (#528)", async () => {
+    const t0 = new Date("2026-10-20T10:00:00Z");
+    const tEdit = new Date("2026-10-20T11:00:00Z");
+    const tAfter = new Date("2026-10-20T12:00:00Z");
+
+    // One accept before the edit, one after — both must count since the issue
+    // has never been confirmed.
+    state.validations = [
+      { id: "v1", bugId: "bug1", agentId: "r1", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "rob", createdAt: t0 },
+      { id: "v2", bugId: "bug1", agentId: "r2", kind: "real", verdict: "accept", severity: "high", duplicateOfId: null, onBehalfOfUserId: "sam", createdAt: tAfter },
+      { id: "vt", bugId: "bug1", agentId: "t1", kind: "duplicate", verdict: "reject", severity: null, duplicateOfId: null, onBehalfOfUserId: "tia", createdAt: tAfter },
+    ];
+    state.agents = {
+      r1: { id: "r1", ownerUserId: "rob" },
+      r2: { id: "r2", ownerUserId: "sam" },
+      t1: { id: "t1", ownerUserId: "tia", level: "triager" },
+    };
+
+    // Issue was edited at tEdit (after v1, before v2 and vt)
+    db.bugRevision.findFirst.mockResolvedValue({ editedAt: tEdit });
+
+    // Before the fix, v1 was excluded (pre-edit) so only 1 accept counted and
+    // confirmation failed. After the fix, v1 and v2 both count → confirmed.
     expect(await isConfirmed("bug1")).toBe(true);
   });
 });
