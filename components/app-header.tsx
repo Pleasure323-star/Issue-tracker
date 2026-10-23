@@ -10,7 +10,6 @@ import { RoleSwitcher } from "@/components/role-switcher";
 import {
   AGENT_MENU_LINKS,
   SWITCH_TENANT_LINK,
-  headerNavItems,
   initialsOf,
   isNavItemActive,
   realRoleOf,
@@ -257,7 +256,6 @@ export function AppHeader({
   isRealSuperAdmin,
   isRealAdmin,
   unreadCount = 0,
-  pendingEscalationsCount = 0,
   userId,
   workspaces = [],
   activeTenantId = null,
@@ -274,7 +272,6 @@ export function AppHeader({
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
   unreadCount?: number;
-  pendingEscalationsCount?: number;
   userId?: string | null;
   workspaces?: WorkspaceChoice[];
   activeTenantId?: string | null;
@@ -299,8 +296,6 @@ export function AppHeader({
     setAccountOpen(false);
   }
 
-  const items = headerNavItems(role, { pendingEscalations: pendingEscalationsCount });
-  const showEscalations = items.some((item) => item.href === "/escalations");
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
   const onNewIssue =
@@ -311,7 +306,7 @@ export function AppHeader({
   return (
     // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
     // and a header that tall pinned to the top covers the page under it.
-    <header className="relative z-40 border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
+    <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/issues/new"
@@ -333,22 +328,6 @@ export function AppHeader({
             userId={userId}
             targetPoints={targetPoints}
           />
-
-          {showEscalations ? (
-            <Link
-              href="/escalations"
-              aria-current={isNavItemActive(pathname, "/escalations") ? "page" : undefined}
-              className={`inline-flex h-10 items-center gap-2 rounded-full border border-zk-bad-bd bg-zk-bad-soft px-4 text-sm font-bold text-zk-bad-fg ${linkFocus}`}
-            >
-              <AlertIcon />
-              Escalation
-              {pendingEscalationsCount > 0 ? (
-                <span aria-label={`${pendingEscalationsCount} pending`} className="tabular-nums">
-                  {pendingEscalationsCount > 99 ? "99+" : pendingEscalationsCount}
-                </span>
-              ) : null}
-            </Link>
-          ) : null}
 
           <AgentsMenu pathname={pathname} agents={agents} />
           <ThemeToggle />

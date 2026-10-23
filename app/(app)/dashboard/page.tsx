@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/auth-helpers";
 import { bugInTenant, currentTenantIdFor } from "@/lib/tenant-context";
-
 import { prisma } from "@/lib/prisma";
 import { IssueStageTabs } from "@/components/overview/issue-stage-tabs";
 import { IssueToolbar } from "@/components/overview/issue-toolbar";
@@ -105,24 +103,33 @@ async function loadIssues(
 }
 
 async function loadPageData() {
-  const user = await requireUser();
   let tenantId: string | null = null;
   try {
-    tenantId = await currentTenantIdFor(user.id);
+    tenantId = await currentTenantIdFor("demo");
   } catch {
     tenantId = null;
   }
 
   let issues: OverviewIssueRow[] = REFERENCE_ISSUES;
   if (tenantId) {
-    issues = await loadIssues(user.id, tenantId);
+    try {
+      issues = await loadIssues("demo", tenantId);
+    } catch {
+      issues = REFERENCE_ISSUES;
+    }
   }
 
-  return { user, issues };
+  return { issues };
 }
 
 export default async function OverviewPage() {
-  const { user, issues } = await loadPageData();
+  let issues: OverviewIssueRow[] = REFERENCE_ISSUES;
+  try {
+    const { issues: loadedIssues } = await loadPageData();
+    issues = loadedIssues;
+  } catch {
+    issues = REFERENCE_ISSUES;
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F5F6]">
@@ -159,4 +166,5 @@ export default async function OverviewPage() {
       </main>
     </div>
   );
+}
 
