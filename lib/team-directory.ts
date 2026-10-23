@@ -79,6 +79,31 @@ export async function teamAgentsForMembers(
   });
   if (agents.length === 0) return result;
 
+  // #447: also include issues manually assigned to the owner (no claim needed).
+  const assignedBugs = await db.bug.findMany({
+    where: {
+      assigneeId: { in: ownerUserIds },
+      tenantId,
+      isDeleted: false,
+      status: { in: ["open", "in_progress"] },
+    },
+    select: {
+      id: true,
+      title: true,
+      categoryId: true,
+      category: { select: { name: true } },
+      areaId: true,
+      area: { select: { name: true } },
+      assigneeId: true,
+    },
+  });
+  const assignedByOwner = new Map<string, (typeof assignedBugs)[number][]>();
+  for (const bug of assignedBugs) {
+    const bugs = assignedByOwner.get(bug.assigneeId!) ?? [];
+    bugs.push(bug);
+    assignedByOwner.set(bug.assigneeId!, bugs);
+  }
+
   const fixedClaims = await db.issueClaim.findMany({
     where: {
       agentId: { in: agents.map((agent) => agent.id) },
@@ -108,7 +133,8 @@ export async function teamAgentsForMembers(
   }
 
   for (const agent of agents) {
-    const currentWork = agent.claims.map(({ bug }) => ({
+    const claimedIds = new Set(agent.claims.map(({ bug }) => bug.id));
+    const claimedWork = agent.claims.map(({ bug }) => ({
       id: bug.id,
       title: bug.title,
       categoryId: bug.categoryId,
@@ -116,6 +142,17 @@ export async function teamAgentsForMembers(
       areaId: bug.areaId ?? null,
       areaName: bug.area?.name ?? null,
     }));
+    const assignedWork = (assignedByOwner.get(agent.ownerUserId) ?? [])
+      .filter((bug) => !claimedIds.has(bug.id))
+      .map((bug) => ({
+        id: bug.id,
+        title: bug.title,
+        categoryId: bug.categoryId,
+        categoryName: bug.category?.name ?? null,
+        areaId: bug.areaId ?? null,
+        areaName: bug.area?.name ?? null,
+      }));
+    const currentWork = [...claimedWork, ...assignedWork];
     const seenTimes = [
       ...agent.apiKeys.map((key) => key.lastUsedAt),
       ...agent.claims.map((claim) => claim.lastHeartbeatAt ?? claim.claimedAt),

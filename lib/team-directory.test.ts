@@ -49,6 +49,7 @@ describe("team directory metrics", () => {
     ]);
     const db = {
       agent: { findMany: agentFindMany },
+      bug: { findMany: vi.fn().mockResolvedValue([]) },
       issueClaim: { findMany: fixedClaimFindMany },
     };
 
@@ -130,6 +131,7 @@ describe("team directory metrics", () => {
         ]),
       },
       issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+      bug: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
     const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
@@ -161,5 +163,274 @@ describe("team directory metrics", () => {
 
     await expect(teamAgentsForMembers(db as never, "tenant-1", [], now)).resolves.toEqual(new Map());
     expect(agentFindMany).not.toHaveBeenCalled();
+  });
+
+  it("includes owner-assigned issues with no claim (#447)", async () => {
+    const agentFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "agent-1",
+        ownerUserId: "person-1",
+        name: "Ada's agent",
+        model: "Claude",
+        level: "contributor",
+        apiKeys: [{ lastUsedAt: null }],
+        claims: [],
+      },
+    ]);
+    const assignedBugFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "issue-assigned",
+        title: "Assigned work",
+        categoryId: "cat-1",
+        category: { name: "Web" },
+        areaId: "area-1",
+        area: { name: "Checkout" },
+        assigneeId: "person-1",
+      },
+    ]);
+    const db = {
+      agent: { findMany: agentFindMany },
+      bug: { findMany: assignedBugFindMany },
+      issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
+
+    expect(assignedBugFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          assigneeId: { in: ["person-1"] },
+          tenantId: "tenant-1",
+          isDeleted: false,
+          status: { in: ["open", "in_progress"] },
+        }),
+      }),
+    );
+    expect(result.get("person-1")).toEqual([
+      {
+        id: "agent-1",
+        name: "Ada's agent",
+        model: "Claude",
+        level: "contributor",
+        online: false,
+        acceptedFixes: 0,
+        currentWork: [
+          {
+            id: "issue-assigned",
+            title: "Assigned work",
+            categoryId: "cat-1",
+            categoryName: "Web",
+            areaId: "area-1",
+            areaName: "Checkout",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("dedupes a claimed-and-assigned issue once (#447)", async () => {
+    const agentFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "agent-1",
+        ownerUserId: "person-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        apiKeys: [{ lastUsedAt: null }],
+        claims: [
+          {
+            claimedAt: now,
+            lastHeartbeatAt: null,
+            bug: {
+              id: "issue-both",
+              title: "Both claimed and assigned",
+              categoryId: null,
+              category: null,
+              areaId: null,
+              area: null,
+            },
+          },
+        ],
+      },
+    ]);
+    const assignedBugFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "issue-both",
+        title: "Both claimed and assigned",
+        categoryId: null,
+        category: null,
+        areaId: null,
+        area: null,
+        assigneeId: "person-1",
+      },
+    ]);
+    const db = {
+      agent: { findMany: agentFindMany },
+      bug: { findMany: assignedBugFindMany },
+      issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
+
+    expect(result.get("person-1")).toEqual([
+      {
+        id: "agent-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        online: true,
+        acceptedFixes: 0,
+        currentWork: [
+          {
+            id: "issue-both",
+            title: "Both claimed and assigned",
+            categoryId: null,
+            categoryName: null,
+            areaId: null,
+            areaName: null,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("excludes resolved, closed, and deleted assigned issues (#447)", async () => {
+    const agentFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "agent-1",
+        ownerUserId: "person-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        apiKeys: [{ lastUsedAt: null }],
+        claims: [],
+      },
+    ]);
+    // The query filters status to open/in_progress and isDeleted false,
+    // so only the open issue is returned.
+    const assignedBugFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "issue-open",
+        title: "Open",
+        categoryId: null,
+        category: null,
+        areaId: null,
+        area: null,
+        assigneeId: "person-1",
+      },
+    ]);
+    const db = {
+      agent: { findMany: agentFindMany },
+      bug: { findMany: assignedBugFindMany },
+      issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
+
+    expect(assignedBugFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          assigneeId: { in: ["person-1"] },
+          tenantId: "tenant-1",
+          isDeleted: false,
+          status: { in: ["open", "in_progress"] },
+        }),
+      }),
+    );
+    expect(result.get("person-1")).toEqual([
+      {
+        id: "agent-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        online: false,
+        acceptedFixes: 0,
+        currentWork: [
+          {
+            id: "issue-open",
+            title: "Open",
+            categoryId: null,
+            categoryName: null,
+            areaId: null,
+            areaName: null,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("shows multiple assigned issues for one owner (#447)", async () => {
+    const agentFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "agent-1",
+        ownerUserId: "person-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        apiKeys: [{ lastUsedAt: null }],
+        claims: [],
+      },
+    ]);
+    const assignedBugFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "issue-a",
+        title: "Issue A",
+        categoryId: null,
+        category: null,
+        areaId: null,
+        area: null,
+        assigneeId: "person-1",
+      },
+      {
+        id: "issue-b",
+        title: "Issue B",
+        categoryId: null,
+        category: null,
+        areaId: null,
+        area: null,
+        assigneeId: "person-1",
+      },
+    ]);
+    const db = {
+      agent: { findMany: agentFindMany },
+      bug: { findMany: assignedBugFindMany },
+      issueClaim: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
+
+    expect(result.get("person-1")).toEqual([
+      {
+        id: "agent-1",
+        name: "Ada's agent",
+        model: null,
+        level: "contributor",
+        online: false,
+        acceptedFixes: 0,
+        currentWork: [
+          { id: "issue-a", title: "Issue A", categoryId: null, categoryName: null, areaId: null, areaName: null },
+          { id: "issue-b", title: "Issue B", categoryId: null, categoryName: null, areaId: null, areaName: null },
+        ],
+      },
+    ]);
+  });
+
+  it("excludes revoked agents entirely (#447)", async () => {
+    // The query already filters revokedAt: null, so revoked agents are never loaded.
+    const agentFindMany = vi.fn().mockResolvedValue([]);
+    const db = {
+      agent: { findMany: agentFindMany },
+      bug: { findMany: vi.fn() },
+      issueClaim: { findMany: vi.fn() },
+    };
+
+    const result = await teamAgentsForMembers(db as never, "tenant-1", ["person-1"], now);
+
+    expect(result.get("person-1")).toEqual([]);
+    expect(agentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ revokedAt: null }),
+      }),
+    );
   });
 });
