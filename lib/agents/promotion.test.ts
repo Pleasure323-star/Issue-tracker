@@ -157,6 +157,19 @@ describe("promoteEarnedReviewer (#451)", () => {
     expect(db.issueValidation.findMany).not.toHaveBeenCalled();
     expect(db.agent.update).not.toHaveBeenCalled();
   });
+
+  it("pins an owner-set triager: ten standing validations do not auto-promote it", async () => {
+    db.agent.findUnique.mockResolvedValue(agentRow({ level: "triager" }));
+    db.issueValidation.findMany.mockResolvedValue(
+      Array.from({ length: EARNED_REVIEWER_VALIDATIONS }, () => validation()),
+    );
+
+    const result = await promoteEarnedReviewer("a1");
+
+    expect(result).toEqual({ ok: true, changed: false, standing: 0 });
+    expect(db.issueValidation.findMany).not.toHaveBeenCalled();
+    expect(db.agent.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("silenceReleases / demoteFromSilence (#451)", () => {

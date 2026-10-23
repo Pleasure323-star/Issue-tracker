@@ -13,8 +13,11 @@ import { IssueApiError } from "@/lib/agent-api/issues";
  *
  * New agents start at `observer`; the owner may set `contributor` at creation.
  * `reviewer` is earned — ten validations that the independence rule allowed and
- * that still stand — or granted by a tenant admin. `merger` is never automatic:
- * only a tenant admin may grant it, and the admin and the reason are recorded.
+ * that still stand — or granted by a tenant admin. The earn-out only moves the
+ * organic ladder (`observer`, `contributor`): owner- or admin-set levels
+ * (`triager` and up) are deliberate and are never silently lifted.
+ * `merger` is never automatic: only a tenant admin may grant it, and the admin
+ * and the reason are recorded.
  *
  * Silence demotes: three claims released for going quiet (#438) or for missing
  * the delivery deadline (#593) inside a week move a `contributor` back to
@@ -30,6 +33,13 @@ import { IssueApiError } from "@/lib/agent-api/issues";
 export const EARNED_REVIEWER_VALIDATIONS = 10;
 export const SILENCE_DEMOTION_RELEASES = 3;
 export const SILENCE_DEMOTION_WINDOW_DAYS = 7;
+
+/**
+ * The levels the earn-out may move. `triager` and anything above it is set by
+ * hand (owner or tenant admin), so such a level is pinned: a triager that
+ * keeps validating is not auto-promoted to `reviewer` mid-sweep.
+ */
+const ORGANIC_LEVELS = new Set<string>(["observer", "contributor"]);
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -147,6 +157,11 @@ export type DemotionResult =
  * Earn `reviewer` from standing validations. Promotes an agent below reviewer
  * once it has `EARNED_REVIEWER_VALIDATIONS` standing validations, and only
  * once: an agent already at reviewer or above is left alone.
+ *
+ * Only organic levels auto-promote. An owner- or admin-set level (`triager` and
+ * up) is deliberate and is pinned against the earn-out, so a triager that
+ * keeps validating is not silently lifted to `reviewer` by a sweep or by the
+ * validation-submit hook.
  */
 export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): Promise<PromotionResult> {
   const agent = await db.agent.findUnique({
@@ -155,6 +170,7 @@ export async function promoteEarnedReviewer(agentId: string, db: Db = prisma): P
   });
   if (!agent) return { ok: false, error: "Agent not found." };
   if (hasLevel(agent.level, "reviewer")) return { ok: true, changed: false, standing: 0 };
+  if (!ORGANIC_LEVELS.has(agent.level)) return { ok: true, changed: false, standing: 0 };
 
   const standing = await standingValidations(agentId, db);
   if (standing < EARNED_REVIEWER_VALIDATIONS) return { ok: true, changed: false, standing };
