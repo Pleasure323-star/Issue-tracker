@@ -27,6 +27,7 @@ export function WorkspaceSwitcher({
   className = "",
   fullWidth = false,
   tone = "default",
+  light = false,
 }: {
   workspaces: WorkspaceChoice[];
   activeTenantId: string | null;
@@ -34,8 +35,10 @@ export function WorkspaceSwitcher({
   fullWidth?: boolean;
   /** "chrome" paints the control for navy chrome. "sidebar" is the tall switcher in the app sidebar. */
   tone?: "default" | "chrome" | "sidebar";
+  /** Light theme variant of chrome: light background, dark text, green dot. */
+  light?: boolean;
 }) {
-  const chrome = tone === "chrome" || tone === "sidebar";
+  const chrome = tone === "chrome" || tone === "sidebar" || light;
   const sidebar = tone === "sidebar";
   const listId = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -108,7 +111,9 @@ export function WorkspaceSwitcher({
             sidebar
               ? "h-12 w-full justify-between rounded-[14px] border-[#34507F] bg-blue-slate px-3 text-sm text-white"
               : chrome
-                ? "h-9 rounded-full border-surface-border bg-white/[0.04] py-0 pl-3 pr-2 text-sm text-porcelain hover:bg-white/[0.08]"
+                ? light
+                  ? "h-9 rounded-full border border-zk-border bg-zk-surface px-3 py-1 text-sm text-zk-text hover:bg-zk-chip"
+                  : "h-9 rounded-full border-surface-border bg-white/[0.04] py-0 pl-3 pr-2 text-sm text-porcelain hover:bg-white/[0.08]"
                 : "h-9 rounded-full border-slate-200 bg-card py-0 pl-3 pr-2 text-xs text-slate-800 hover:bg-slate-50"
           } ${fullWidth ? "w-full justify-between" : ""}`}
         >

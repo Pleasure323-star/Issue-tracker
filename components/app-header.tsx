@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import { SignOutButton } from "@/components/sign-out-button";
@@ -161,23 +162,24 @@ export function AppHeader({
     // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Brand: ziki */}
+        {/* Brand: ziki logo */}
         <Link
           href="/dashboard"
           aria-label="Ziki"
-          className="flex items-center gap-1 text-sm font-semibold text-zk-text"
+          className="flex items-center gap-1"
         >
-          <span
-            aria-hidden="true"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text"
-          >
-            z
-          </span>
-          <span>ziki</span>
+          <Image
+            src="/brand/ziki-logo-light.png"
+            alt="Ziki"
+            width={100}
+            height={28}
+            className="h-6 w-auto object-contain"
+            unoptimized
+          />
         </Link>
 
         {/* Workspace switcher (light-themed pill with green dot). */}
-        <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
+        <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} light />
 
         {/* Spacer pushes agents/notifications/account to the right. */}
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
@@ -196,11 +198,13 @@ export function AppHeader({
               <span className="sr-only">Account menu for {userName}</span>
               <Avatar name={userName} image={userImage} size="sm" variant="solid" />
               <span className="truncate font-semibold text-zk-text">{userName}</span>
-              <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
-                <span data-icon="trophy" aria-hidden="true">
-                  <TrophyIcon />
+              <span className="inline-flex items-center rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
+                <span data-icon="trophy" aria-hidden="true" className="flex items-center shrink-0">
+                  <span className="h-3 w-3">
+                    <TrophyIcon />
+                  </span>
                 </span>
-                {points} pts
+                <span className="ml-1">{points} pts</span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />

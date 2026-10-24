@@ -34,7 +34,7 @@ export function AppSidebar({
 
   return (
     // Phones: a slim icon strip above the top bar. From lg up: the 60 px rail.
-    <aside className="flex w-full flex-row items-center gap-1 bg-[#311916] px-2 py-2 text-[#EDE2E0] lg:sticky lg:top-0 lg:h-dvh lg:w-[60px] lg:shrink-0 lg:flex-col lg:gap-2 lg:py-4">
+    <aside className="flex w-full flex-row items-center gap-1 bg-zk-surface px-2 py-2 text-zk-text lg:sticky lg:top-0 lg:h-dvh lg:w-[60px] lg:shrink-0 lg:flex-col lg:gap-2 lg:py-4">
       <Link
         href="/dashboard"
         aria-label="Ziki"
@@ -111,8 +111,8 @@ function RailTile({
       title={label}
       className={`${railTile} ${
         active
-          ? "bg-[#513431] text-white"
-          : "text-[#DCE5F5] hover:bg-[#513431] hover:text-white"
+          ? "bg-zk-chip text-zk-text"
+          : "text-zk-text hover:bg-zk-chip hover:text-zk-text"
       }`}
     >
       {children}
