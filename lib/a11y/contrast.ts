@@ -131,7 +131,7 @@ export function contrastRatio(color1: string, color2: string): number {
 /** Check if contrast ratio satisfies WCAG AA (4.5:1 for normal text, 3:1 for large text). */
 export function meetsWcagAA(ratio: number, isLargeText = false): boolean {
   const target = isLargeText ? 3.0 : 4.5;
-  return ratio >= target - 0.05; // tiny rounding margin
+  return ratio >= target;
 }
 
 /** Extract text color class from classList (e.g. text-slate-500). */
@@ -157,8 +157,52 @@ function getBgColorClass(className: string): string | null {
 }
 
 /**
+ * Detects whether an element qualifies as "large text" under WCAG 2.1
+ * (>= 18pt / ~24px, or >= 14pt / ~18.5px bold).
+ */
+export function isLargeText(el: HTMLElement, className = ""): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "h1" || tag === "h2") return true;
+
+  const tokens = new Set(className.split(/\s+/));
+  if (
+    tokens.has("text-xl") ||
+    tokens.has("text-2xl") ||
+    tokens.has("text-3xl") ||
+    tokens.has("text-4xl") ||
+    tokens.has("text-5xl") ||
+    tokens.has("text-6xl")
+  ) {
+    return true;
+  }
+
+  const isBold =
+    tag === "strong" ||
+    tokens.has("font-bold") ||
+    tokens.has("font-extrabold") ||
+    tokens.has("font-black") ||
+    tokens.has("font-semibold");
+
+  if (isBold && tokens.has("text-lg")) {
+    return true;
+  }
+
+  const styleFontSize = el.style?.fontSize;
+  if (styleFontSize) {
+    const pxMatch = styleFontSize.match(/^([\d.]+)px$/);
+    if (pxMatch) {
+      const px = parseFloat(pxMatch[1]);
+      if (px >= 24) return true;
+      if (px >= 18.5 && isBold) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Traverses rendered DOM tree to find text elements with defined color classes
- * and compares against their background (or default white/card surface).
+ * or inline styles and compares against their background (or default white/card surface).
  */
 export function contrastMismatches(root: ParentNode, defaultBg = "#ffffff"): ContrastMismatch[] {
   const mismatches: ContrastMismatch[] = [];
@@ -171,31 +215,31 @@ export function contrastMismatches(root: ParentNode, defaultBg = "#ffffff"): Con
     );
     if (!hasDirectText) continue;
 
-    const className = el.className;
-    if (typeof className !== "string" || !className) continue;
-
-    const fgColor = getTextColorClass(className);
+    const className = typeof el.className === "string" ? el.className : "";
+    const inlineFg = el.style?.color;
+    const fgColor = inlineFg && parseColor(inlineFg) ? inlineFg : getTextColorClass(className);
     if (!fgColor) continue;
 
     // Find closest ancestor with explicit bg or use default
     let current: HTMLElement | null = el;
     let bgColor: string | null = null;
     while (current) {
-      if (typeof current.className === "string") {
-        const bg = getBgColorClass(current.className);
-        if (bg) {
-          bgColor = bg;
-          break;
-        }
+      const inlineBg = current.style?.backgroundColor;
+      const classBg = typeof current.className === "string" ? getBgColorClass(current.className) : null;
+      const bg = inlineBg && parseColor(inlineBg) ? inlineBg : classBg;
+      if (bg) {
+        bgColor = bg;
+        break;
       }
       current = current.parentElement;
     }
     const resolvedBg = bgColor ?? defaultBg;
 
     const ratio = contrastRatio(fgColor, resolvedBg);
-    const expectedRatio = 4.5;
+    const large = isLargeText(el, className);
+    const expectedRatio = large ? 3.0 : 4.5;
 
-    if (!meetsWcagAA(ratio)) {
+    if (!meetsWcagAA(ratio, large)) {
       mismatches.push({
         element: el.outerHTML.replace(/\s+/g, " ").slice(0, 160),
         textColor: fgColor,

@@ -67,5 +67,36 @@ describe("WCAG 2.1 Color Contrast", () => {
       expect(mismatches[0].ratio).toBeLessThan(4.5);
       expect(mismatches[0].message).toContain("below WCAG AA required 4.5:1");
     });
+
+    it("scans inline styles when classes are absent", () => {
+      const div = document.createElement("div");
+      div.style.backgroundColor = "#ffffff";
+      div.innerHTML = `<span style="color: #cbd5e1">Inline styled text</span>`;
+
+      const mismatches = contrastMismatches(div);
+      expect(mismatches.length).toBe(1);
+      // CSSOM normalizes hex colors to rgb() in el.style
+      expect(mismatches[0].textColor).toMatch(/^(#cbd5e1|rgb\(203,\s*213,\s*225\))$/);
+      expect(mismatches[0].backgroundColor).toMatch(/^(#ffffff|rgb\(255,\s*255,\s*255\))$/);
+      expect(mismatches[0].ratio).toBeLessThan(4.5);
+    });
+
+    it("applies 3:1 threshold for large text elements", () => {
+      // #64748b (slate-500) on #ffffff has ratio ~ 3.98:1.
+      // Below 4.5:1 (fails normal), but above 3.0:1 (passes large text).
+      const h1 = document.createElement("h1");
+      h1.className = "text-slate-500 bg-white";
+      h1.textContent = "Large Heading Text";
+
+      const mismatches = contrastMismatches(h1);
+      expect(mismatches).toEqual([]);
+    });
+
+    it("strictly enforces exact thresholds in meetsWcagAA", () => {
+      expect(meetsWcagAA(4.49, false)).toBe(false);
+      expect(meetsWcagAA(4.5, false)).toBe(true);
+      expect(meetsWcagAA(2.99, true)).toBe(false);
+      expect(meetsWcagAA(3.0, true)).toBe(true);
+    });
   });
 });
