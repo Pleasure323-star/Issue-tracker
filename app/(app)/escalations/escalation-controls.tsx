@@ -141,12 +141,15 @@ export function EscalationAnswerForm({
 export function RedesignDecisionButtons({
   proposalId,
   bugId,
+  authorized,
   onDecided,
 }: {
   proposalId: string;
   bugId?: string | null;
+  authorized?: boolean;
   onDecided?: () => void;
 }) {
+  if (!authorized) return null;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

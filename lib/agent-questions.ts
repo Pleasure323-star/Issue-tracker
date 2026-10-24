@@ -292,7 +292,7 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
         status: true,
         createdAt: true,
         bug: { select: { id: true, title: true } },
-        authorAgent: { select: { id: true, name: true } },
+        authorAgent: { select: { id: true, name: true, ownerUserId: true } },
       },
     }),
     prisma.redesignProposal.findMany({
@@ -306,7 +306,7 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
         status: true,
         createdAt: true,
         bug: { select: { id: true, title: true } },
-        authorAgent: { select: { id: true, name: true } },
+        authorAgent: { select: { id: true, name: true, ownerUserId: true } },
       },
     }),
   ]);
@@ -332,7 +332,6 @@ export async function listOwnerPendingApprovals(userId: string, tenantId: string
       status: "pending",
     },
     orderBy: { createdAt: "desc" },
-    take: 100,
     select: {
       id: true,
       stage: true,
@@ -347,6 +346,12 @@ export async function listOwnerPendingApprovals(userId: string, tenantId: string
  * redesign proposals (design decisions), and issue approvals (approval requests).
  */
 export async function listOwnerEscalations(userId: string, tenantId: string) {
+  const member = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId } },
+    select: { role: true },
+  });
+  const isAdmin = isTenantAdminRole(member?.role);
+
   const [questions, redesigns, approvals] = await Promise.all([
     listOwnerQuestions(userId, tenantId),
     listOwnerPendingRedesigns(userId, tenantId),
@@ -362,6 +367,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
     isWaiting: boolean;
     agentName: string;
     title?: string;
+    authorized?: boolean;
     createdAt: Date;
     answeredAt?: Date | null;
     answer?: string | null;
@@ -393,6 +399,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       cleanBody: r.body,
       escalationType: "Scope Expansion",
       title: r.title,
+      authorized: isAdmin && userId !== (r.authorAgent as { ownerUserId?: string }).ownerUserId,
       isWaiting: r.status === "proposed",
       agentName: r.authorAgent.name,
       createdAt: r.createdAt,

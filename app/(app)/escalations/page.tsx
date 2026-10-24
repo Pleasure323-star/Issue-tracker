@@ -25,6 +25,7 @@ type OwnerEscalation = {
   isWaiting: boolean;
   agentName: string;
   title?: string;
+  authorized?: boolean;
   createdAt: Date;
   answeredAt?: Date | null;
   answer?: string | null;
@@ -170,20 +171,26 @@ export default async function EscalationsPage({
                 </div>
               ) : null}
 
-              {item.isWaiting && item.source === "question" ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-2">
-                  <QuickResolveButtons escalationId={item.id} />
-                  <Link href={item.href} className="text-xs font-medium text-teal-700 hover:underline">
-                    Write custom response →
-                  </Link>
-                </div>
-              ) : item.isWaiting && item.source === "redesign" ? (
+              {item.isWaiting ? (
                 <div className="border-t border-slate-100 pt-2">
-                  <RedesignDecisionButtons proposalId={item.id} bugId={item.bug?.id ?? null} />
-                </div>
-              ) : item.isWaiting && item.source === "approval" ? (
-                <div className="border-t border-slate-100 pt-2">
-                  <ApprovalDecisionButtons approvalId={item.id} />
+                  {item.source === "question" ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <QuickResolveButtons escalationId={item.id} />
+                      <Link
+                        href={item.href}
+                        className="text-xs font-medium text-teal-700 hover:underline"
+                      >
+                        Write custom response →
+                      </Link>
+                    </div>
+                  ) : item.source === "redesign" && item.authorized ? (
+                    <RedesignDecisionButtons
+                      proposalId={item.id}
+                      bugId={item.bug?.id ?? null}
+                    />
+                  ) : item.source === "approval" ? (
+                    <ApprovalDecisionButtons approvalId={item.id} />
+                  ) : null}
                 </div>
               ) : item.source === "question" ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/40 p-3 text-xs text-slate-700 space-y-1">
