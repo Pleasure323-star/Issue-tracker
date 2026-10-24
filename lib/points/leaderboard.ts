@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { pointsNumber } from "./rules";
 
 /**
  * Point balances and the leaderboard (#428), always inside one tenant.
@@ -66,7 +67,7 @@ export async function pointTotals(db: Db, tenantId: string, userId: string): Pro
     db.pointEntry.aggregate({ where: { tenantId, userId }, _sum: { points: true } }),
     db.pointEntry.count({ where: { ...solvedWhere(tenantId), userId } }),
   ]);
-  return { points: sum._sum.points ?? 0, solvedTasks };
+  return { points: pointsNumber(sum._sum.points), solvedTasks };
 }
 
 /**
@@ -123,7 +124,7 @@ export async function paginatedTenantLeaderboard(
             u."id" AS "userId",
             u."name" AS "name",
             u."image" AS "image",
-            COALESCE(SUM(pe."points"), 0)::int AS "points",
+            COALESCE(SUM(pe."points"), 0)::float8 AS "points",
             COALESCE(COUNT(CASE WHEN pe."role" = 'solver' AND pe."points" > 0 AND pe."correctedAt" IS NULL THEN 1 END), 0)::int AS "solvedTasks"
           FROM "User" u
           INNER JOIN "Membership" m ON m."userId" = u."id" AND m."tenantId" = ${tenantId}
@@ -145,7 +146,7 @@ export async function paginatedTenantLeaderboard(
         userId: r.userId,
         name: r.name,
         image: r.image,
-        points: Number(r.points),
+        points: pointsNumber(r.points),
         solvedTasks: Number(r.solvedTasks),
       }));
 
@@ -195,11 +196,10 @@ export async function paginatedTenantLeaderboard(
       userId: b.userId,
       name: user.name,
       image: user.image,
-      points: b._sum.points ?? 0,
+      points: pointsNumber(b._sum.points),
       solvedTasks: solvedById.get(b.userId) ?? 0,
     }];
   });
-
   const total = allRows.length;
   const allRanked = rankLeaderboard(allRows);
   const entries = allRanked.slice(offset, offset + limit);
@@ -219,4 +219,55 @@ export async function tenantLeaderboard(
   const options = typeof limitOrOptions === "number" ? { limit: limitOrOptions } : limitOrOptions;
   const result = await paginatedTenantLeaderboard(db, tenantId, options);
   return result.entries;
+}
+
+/**
+ * One person's place in the tenant, with the size of the field. Null when
+ * they have no ledger rows at all — there is no honest rank for someone the
+ * leaderboard would not list.
+ *
+ * Postgres gets one window-function query using the same tie rule as
+ * rankLeaderboard (1, 2, 2, 4). Other clients (mocked in unit tests) walk the
+ * ranked pages the leaderboard already exposes.
+ */
+export async function tenantRankFor(
+  db: Db,
+  tenantId: string,
+  userId: string,
+): Promise<{ rank: number; total: number } | null> {
+  if (typeof (db as PrismaClient).$queryRaw === "function") {
+    try {
+      type RankRow = { rank: number | bigint; total: number | bigint };
+      const rows = await (db as PrismaClient).$queryRaw<RankRow[]>`
+        WITH totals AS (
+          SELECT u."id",
+                 COALESCE(SUM(pe."points"), 0)::float8 AS points,
+                 COUNT(CASE WHEN pe."role" = 'solver' AND pe."points" > 0 AND pe."correctedAt" IS NULL THEN 1 END)::int AS solved
+          FROM "User" u
+          INNER JOIN "Membership" m ON m."userId" = u."id" AND m."tenantId" = ${tenantId}
+          INNER JOIN "PointEntry" pe ON pe."userId" = u."id" AND pe."tenantId" = ${tenantId}
+          GROUP BY u."id"
+        ), numbered AS (
+          SELECT "id",
+                 RANK() OVER (ORDER BY points DESC, solved DESC) AS rank,
+                 COUNT(*) OVER () AS total
+          FROM totals
+        )
+        SELECT rank, total FROM numbered WHERE "id" = ${userId}
+      `;
+      const row = rows[0];
+      return row ? { rank: Number(row.rank), total: Number(row.total) } : null;
+    } catch {
+      // Fall through to the paginated API (mocked clients in tests).
+    }
+  }
+
+  const first = await paginatedTenantLeaderboard(db, tenantId, { limit: 100 });
+  for (let page = 1; page <= first.totalPages; page++) {
+    const board =
+      page === 1 ? first : await paginatedTenantLeaderboard(db, tenantId, { limit: 100, page });
+    const entry = board.entries.find((row) => row.userId === userId);
+    if (entry) return { rank: entry.rank, total: board.total };
+  }
+  return null;
 }
