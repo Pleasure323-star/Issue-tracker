@@ -1,14 +1,12 @@
-## Summary
+@echo off
+echo ## Summary
+echo - Created in-app Developer/API docs page at /docs with authentication, quick links, and core API examples.
+echo - Added link to /llms.txt in app metadata and head tag for crawler discovery.
+echo - Added API Docs links in header navigation, account menu (desktop/mobile), Settings (Agents section), and Settings -> Agents page.
+echo - Added header nav item API Docs for discoverability.
+echo.
+echo Fixes #625
+echo.
+echo ## Testing
+echo - Lint passes (existing warnings only). UI/metadata additions; no breaking logic changes.
 
-- Unified all human intervention requests into a single Escalations queue at /escalations (#432)
-- Agent questions, redesign proposals (design decisions), and issue approvals (approval requests) now appear together in one centralized inbox
-- Users can filter by status (Waiting / Resolved / All) and by escalation type (Blocker, Work Authorization, Question, Scope Expansion, Human Approval)
-- Each escalation item links back to its source issue and supports direct action: quick resolve, custom response, approve/reject redesign, approve/reject approval
-
-Fixes #432
-
-## Test plan
-
-- [ ] `pnpm test`
-- [ ] `pnpm lint` (if touched app code)
-- [ ] Manual check: open /escalations as a tenant owner and verify questions, pending redesign proposals, and pending approvals all appear in one list with correct filtering and action buttons
