@@ -1,3 +1,5 @@
+"use client";
+
 type Stage = {
   id: string;
   label: string;
