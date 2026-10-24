@@ -261,6 +261,119 @@ export async function countPendingEscalations(userId: string, tenantId: string):
   });
 }
 
+/** Pending redesign proposals needing a decision, for the onBehalfOf user (#432). */
+export async function listOwnerPendingRedesigns(userId: string, tenantId: string) {
+  return prisma.redesignProposal.findMany({
+    where: {
+      onBehalfOfUserId: userId,
+      tenantId,
+      status: "proposed",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      title: true,
+      body: true,
+      status: true,
+      createdAt: true,
+      bug: { select: { id: true, title: true } },
+      authorAgent: { select: { id: true, name: true } },
+    },
+  });
+}
+
+/** Pending issue approvals needing a decision (#432). */
+export async function listOwnerPendingApprovals(userId: string, tenantId: string) {
+  return prisma.issueApproval.findMany({
+    where: {
+      bug: { project: { tenantId } },
+      status: "pending",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      stage: true,
+      status: true,
+      createdAt: true,
+      bug: { select: { id: true, title: true } },
+    },
+  });
+}
+
+/** Unified list of all escalations for an owner (#432): agent questions,
+ * redesign proposals (design decisions), and issue approvals (approval requests).
+ */
+export async function listOwnerEscalations(userId: string, tenantId: string) {
+  const [questions, redesigns, approvals] = await Promise.all([
+    listOwnerQuestions(userId, tenantId),
+    listOwnerPendingRedesigns(userId, tenantId),
+    listOwnerPendingApprovals(userId, tenantId),
+  ]);
+
+  const items: Array<{
+    id: string;
+    source: "question" | "redesign" | "approval";
+    body: string;
+    cleanBody: string;
+    escalationType: EscalationType;
+    isWaiting: boolean;
+    agentName: string;
+    createdAt: Date;
+    answeredAt?: Date | null;
+    answer?: string | null;
+    bug?: { id: string; title: string } | null;
+  }> = [];
+
+  for (const q of questions) {
+    const parsed = parseEscalationBody(q.body);
+    items.push({
+      id: q.id,
+      source: "question",
+      body: q.body,
+      cleanBody: parsed.cleanBody,
+      escalationType: parsed.type,
+      isWaiting: !q.answeredAt,
+      agentName: q.agent.name,
+      createdAt: q.createdAt,
+      answeredAt: q.answeredAt,
+      answer: q.answer,
+      bug: q.bug ? { id: q.bug.id, title: q.bug.title } : null,
+    });
+  }
+
+  for (const r of redesigns) {
+    items.push({
+      id: r.id,
+      source: "redesign",
+      body: r.body,
+      cleanBody: r.body,
+      escalationType: "Scope Expansion",
+      isWaiting: true,
+      agentName: r.authorAgent.name,
+      createdAt: r.createdAt,
+      bug: r.bug ? { id: r.bug.id, title: r.bug.title } : null,
+    });
+  }
+
+  for (const a of approvals) {
+    items.push({
+      id: a.id,
+      source: "approval",
+      body: `Human approval required before ${a.stage.replace("_", " ")}.`,
+      cleanBody: `Human approval required before ${a.stage.replace("_", " ")}.`,
+      escalationType: "Human Approval",
+      isWaiting: true,
+      agentName: "System",
+      createdAt: a.createdAt,
+      bug: a.bug ? { id: a.bug.id, title: a.bug.title } : null,
+    });
+  }
+
+  return items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
 /** Escalations linked to a specific issue/ticket (#763). */
 export async function listBugEscalations(bugId: string, tenantId: string) {
   return prisma.agentQuestion.findMany({

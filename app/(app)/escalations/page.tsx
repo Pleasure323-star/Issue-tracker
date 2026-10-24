@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { listOwnerQuestions, parseEscalationBody, type EscalationType } from "@/lib/agent-questions";
+import { listOwnerEscalations, type EscalationType } from "@/lib/agent-questions";
 import { LocalTime } from "@/components/local-time";
-import { EscalationTypeBadge, QuickResolveButtons } from "./escalation-controls";
+import { EscalationTypeBadge, QuickResolveButtons, RedesignDecisionButtons, ApprovalDecisionButtons } from "./escalation-controls";
 
 export const metadata = { title: "Agent Escalations" };
 
@@ -15,6 +15,20 @@ const ALL_TYPES: EscalationType[] = [
   "Human Approval",
 ];
 
+type OwnerEscalation = {
+  id: string;
+  source: "question" | "redesign" | "approval";
+  body: string;
+  cleanBody: string;
+  escalationType: EscalationType;
+  isWaiting: boolean;
+  agentName: string;
+  createdAt: Date;
+  answeredAt?: Date | null;
+  answer?: string | null;
+  bug?: { id: string; title: string } | null;
+};
+
 export default async function EscalationsPage({
   searchParams,
 }: {
@@ -22,25 +36,15 @@ export default async function EscalationsPage({
 }) {
   const user = await requireUser();
   const tenantId = await currentTenantIdFor(user.id);
-  const questions = tenantId ? await listOwnerQuestions(user.id, tenantId) : [];
+  const escalations = tenantId ? await listOwnerEscalations(user.id, tenantId) : [];
 
   const params = searchParams ? await searchParams : {};
   const statusFilter = params.status ?? "waiting";
   const typeFilter = params.type ?? "all";
 
-  const enriched = questions.map((q) => {
-    const parsed = parseEscalationBody(q.body);
-    return {
-      ...q,
-      body: parsed.cleanBody,
-      escalationType: parsed.type,
-      isWaiting: !q.answeredAt,
-    };
-  });
+  const pendingCount = escalations.filter((q) => q.isWaiting).length;
 
-  const pendingCount = enriched.filter((q) => q.isWaiting).length;
-
-  const filtered = enriched.filter((item) => {
+  const filtered = escalations.filter((item) => {
     if (statusFilter === "waiting" && !item.isWaiting) return false;
     if (statusFilter === "answered" && item.isWaiting) return false;
     if (typeFilter !== "all" && item.escalationType !== typeFilter) return false;
@@ -61,7 +65,7 @@ export default async function EscalationsPage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Agent Escalations</h1>
           <p className="text-sm text-slate-600">
-            Incoming blockers, authorization requests, and questions requiring human guidance.
+            Incoming blockers, authorization requests, design decisions, and questions requiring human guidance.
           </p>
         </div>
         {pendingCount > 0 ? (
@@ -100,7 +104,7 @@ export default async function EscalationsPage({
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
-              Resolved ({enriched.length - pendingCount})
+              Resolved ({escalations.length - pendingCount})
             </Link>
             <Link
               href={makeQuery("all", typeFilter)}
@@ -110,7 +114,7 @@ export default async function EscalationsPage({
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
-              All ({enriched.length})
+              All ({escalations.length})
             </Link>
           </div>
         </div>
@@ -154,7 +158,7 @@ export default async function EscalationsPage({
                     href={`/escalations/${item.id}`}
                     className="font-medium text-teal-800 hover:underline"
                   >
-                    {item.agent.name}
+                    {item.agentName}
                   </Link>
                   <span className="text-xs text-slate-400">•</span>
                   <LocalTime date={item.createdAt} className="text-xs text-slate-500" />
@@ -186,13 +190,23 @@ export default async function EscalationsPage({
 
               {item.isWaiting ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                  <QuickResolveButtons escalationId={item.id} />
-                  <Link
-                    href={`/escalations/${item.id}`}
-                    className="text-xs font-medium text-teal-700 hover:underline"
-                  >
-                    Write custom response →
-                  </Link>
+                  {item.source === "question" && (
+                    <>
+                      <QuickResolveButtons escalationId={item.id} />
+                      <Link
+                        href={`/escalations/${item.id}`}
+                        className="text-xs font-medium text-teal-700 hover:underline"
+                      >
+                        Write custom response →
+                      </Link>
+                    </>
+                  )}
+                  {item.source === "redesign" && (
+                    <RedesignDecisionButtons proposalId={item.id} />
+                  )}
+                  {item.source === "approval" && (
+                    <ApprovalDecisionButtons approvalId={item.id} />
+                  )}
                 </div>
               ) : (
                 <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100 space-y-1">
@@ -207,7 +221,7 @@ export default async function EscalationsPage({
         <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center bg-white">
           <p className="text-sm font-medium text-slate-700">No escalations match this filter.</p>
           <p className="mt-1 text-xs text-slate-500">
-            Agents ask for blockers, permissions, and guidance here.
+            Agents, design proposals, and approval gates surface here.
           </p>
         </div>
       )}

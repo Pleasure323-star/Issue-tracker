@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { answerSchema, answerAgentQuestion } from "@/lib/agent-questions";
+import { decideRedesign } from "@/lib/redesigns";
+import { decideApproval } from "@/lib/approvals";
 import { IssueApiError } from "@/lib/agent-api/issues";
 
 export type AnswerActionResult = { ok: true } | { ok: false; error: string };
@@ -63,5 +65,47 @@ export async function quickResolveEscalationAction(
   revalidatePath("/escalations");
   revalidatePath(`/escalations/${escalationId}`);
   revalidatePath("/issues");
+  return { ok: true };
+}
+
+export type DecideRedesignResult = { ok: true } | { ok: false; error: string };
+
+export async function decideRedesignAction(
+  proposalId: string,
+  decision: "approved" | "rejected" | "chosen",
+): Promise<DecideRedesignResult> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return { ok: false, error: "Workspace membership required." };
+
+  try {
+    await decideRedesign(user.id, tenantId, proposalId, decision);
+  } catch (error) {
+    if (error instanceof IssueApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+
+  revalidatePath("/escalations");
+  return { ok: true };
+}
+
+export type DecideApprovalResult = { ok: true } | { ok: false; error: string };
+
+export async function decideApprovalAction(
+  approvalId: string,
+  decision: "approved" | "rejected",
+): Promise<DecideApprovalResult> {
+  const user = await requireUser();
+  const tenantId = await currentTenantIdFor(user.id);
+  if (!tenantId) return { ok: false, error: "Workspace membership required." };
+
+  try {
+    await decideApproval(user.id, tenantId, approvalId, decision);
+  } catch (error) {
+    if (error instanceof IssueApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+
+  revalidatePath("/escalations");
   return { ok: true };
 }

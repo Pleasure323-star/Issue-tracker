@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   answerEscalationAction,
+  decideApprovalAction,
+  decideRedesignAction,
   quickResolveEscalationAction,
   type AnswerActionResult,
 } from "./actions";
@@ -132,5 +134,91 @@ export function EscalationAnswerForm({
         </span>
       </div>
     </form>
+  );
+}
+
+export function RedesignDecisionButtons({
+  proposalId,
+  onDecided,
+}: {
+  proposalId: string;
+  onDecided?: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const handleDecide = (decision: "approved" | "rejected" | "chosen") => {
+    startTransition(async () => {
+      const res = await decideRedesignAction(proposalId, decision);
+      if (res.ok) {
+        onDecided?.();
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        disabled={isPending}
+        onClick={() => handleDecide("approved")}
+        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
+      >
+        {isPending ? "Deciding…" : "Approve Design"}
+      </Button>
+      <Button
+        type="button"
+        disabled={isPending}
+        onClick={() => handleDecide("rejected")}
+        variant="secondary"
+        className="text-xs px-2.5 py-1.5"
+      >
+        Reject
+      </Button>
+    </div>
+  );
+}
+
+export function ApprovalDecisionButtons({
+  approvalId,
+  onDecided,
+}: {
+  approvalId: string;
+  onDecided?: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const handleDecide = (decision: "approved" | "rejected") => {
+    startTransition(async () => {
+      const res = await decideApprovalAction(approvalId, decision);
+      if (res.ok) {
+        onDecided?.();
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        disabled={isPending}
+        onClick={() => handleDecide("approved")}
+        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
+      >
+        {isPending ? "Deciding…" : "Approve"}
+      </Button>
+      <Button
+        type="button"
+        disabled={isPending}
+        onClick={() => handleDecide("rejected")}
+        variant="secondary"
+        className="text-xs px-2.5 py-1.5"
+      >
+        Reject
+      </Button>
+    </div>
   );
 }
