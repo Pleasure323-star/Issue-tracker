@@ -27,6 +27,23 @@ vi.mock("next/cache", () => ({
   unstable_cache: (fn: (...a: unknown[]) => unknown) => fn,
 }));
 
+vi.mock("@/lib/agent-api/offer", () => ({
+  offerNext: vi.fn(),
+  scheduleOfferExpiry: vi.fn(),
+}));
+
+vi.mock("@/lib/github/merge-pr", () => ({
+  mergeAcceptedFix: vi.fn(),
+}));
+
+vi.mock("@/lib/agent-notifications", () => ({
+  notifyClaimOffered: vi.fn(),
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notifyLater: vi.fn(),
+}));
+
 import {
   answerEscalationAction,
   decideApprovalAction,
