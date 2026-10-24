@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
@@ -53,26 +53,24 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
   };
   return render(
     <>
-      <AppSidebar
-        issueCount={4}
-        workspaces={shared.workspaces ?? []}
-        activeTenantId={shared.activeTenantId ?? null}
-      />
+      <AppSidebar issueCount={4} pendingEscalationsCount={0} />
       <AppHeader {...shared} />
     </>,
   );
 }
 
 describe("account menu role switch", () => {
-  it("paints the sidebar navy and the top bar as a surface", () => {
+  it("paints the sidebar plum and the top bar as a surface", () => {
     renderHeader();
     const header = document.querySelector("header");
     expect(header?.className).not.toContain("backdrop-blur");
     expect(header?.className).toContain("bg-zk-surface");
-    expect(document.querySelector("aside")?.className).toContain("bg-deep-ocean");
-    const account = screen.getByRole("button", { name: /account menu/i });
-    // Wraps on phones and tablets (no sideways scroll), never squeezed from lg up.
-    const toolbar = account.parentElement?.parentElement?.className.split(/\s+/) ?? [];
+    // design.md rail: deep plum #311916, 60 px icon-only.
+    expect(document.querySelector("aside")?.className).toContain("bg-[#311916]");
+    // The agents/notifications group never gets squeezed from lg up.
+    const toolbar =
+      screen.getByRole("link", { name: /notifications/i }).parentElement?.className.split(/\s+/) ??
+      [];
     expect(toolbar).toContain("min-w-0");
     expect(toolbar).toContain("lg:shrink-0");
   });
@@ -128,23 +126,22 @@ describe("account menu role switch", () => {
       unreadCount: 3,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
-    const sidebar = container.querySelector("aside");
-    const workspace = within(sidebar!).getByRole("button", { name: /active workspace, ziki/i });
+    const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
     expect(workspace.getAttribute("aria-label")).toBeNull();
     expect(workspace.textContent).toContain("Ziki");
   });
 
   it("switches the active workspace as soon as one is chosen", async () => {
     const user = userEvent.setup();
-    const { container } = renderHeader({
+    renderHeader({
       workspaces: [
         { id: "t1", name: "Ziki", slug: "ziki" },
         { id: "t2", name: "Acme", slug: "acme" },
       ],
       activeTenantId: "t1",
     });
-    const sidebar = container.querySelector("aside");
-    await user.click(within(sidebar!).getByRole("button", { name: /active workspace, ziki/i }));
+
+    await user.click(screen.getByRole("button", { name: /active workspace, ziki/i }));
     await user.click(screen.getByRole("option", { name: "Acme" }));
 
     expect(selectTenant).toHaveBeenCalledTimes(1);
@@ -153,23 +150,21 @@ describe("account menu role switch", () => {
   });
 
   it("links to workspaces when the person has none", () => {
-    const { container: rendered } = renderHeader({ workspaces: [], activeTenantId: null });
-    const sidebar = rendered.querySelector("aside");
-    expect(within(sidebar!).queryByRole("button", { name: /active workspace/i })).toBeNull();
-    expect(within(sidebar!).getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
+    renderHeader({ workspaces: [], activeTenantId: null });
+    expect(screen.queryByRole("button", { name: /active workspace/i })).toBeNull();
+    expect(screen.getByRole("link", { name: "Workspaces" }).getAttribute("href")).toBe("/tenants");
   });
 
   it("shows the slug when two workspaces share a name", async () => {
     const user = userEvent.setup();
-    const { container: rendered } = renderHeader({
+    renderHeader({
       workspaces: [
         { id: "t1", name: "Acme", slug: "acme" },
         { id: "t2", name: "Acme", slug: "acme-eu" },
       ],
       activeTenantId: "t1",
     });
-    const sidebar = rendered.querySelector("aside");
-    const trigger = within(sidebar!).getByRole("button", { name: /active workspace, acme \(acme\)/i });
+    const trigger = screen.getByRole("button", { name: /active workspace, acme \(acme\)/i });
     expect(trigger.getAttribute("aria-label")).toBeNull();
     await user.click(trigger);
     expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();

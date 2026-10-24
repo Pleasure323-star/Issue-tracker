@@ -1,216 +1,127 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import { BASE_PATH } from "@/lib/base-path";
 import { isNavItemActive } from "@/lib/header-nav";
-
-const COLLAPSE_KEY = "ziki.sidebar.collapsed";
-const COLLAPSE_EVENT = "ziki-sidebar-collapse";
-
-function collapsedNow() {
-  try {
-    return window.localStorage.getItem(COLLAPSE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function subscribeCollapsed(onStoreChange: () => void) {
-  window.addEventListener(COLLAPSE_EVENT, onStoreChange);
-  return () => window.removeEventListener(COLLAPSE_EVENT, onStoreChange);
-}
 
 function asset(file: string) {
   return BASE_PATH ? `${BASE_PATH}/brand/${file}` : `/brand/${file}`;
 }
 
-function NavIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <svg
-      width="19"
-      height="19"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="shrink-0"
-    >
-      {children}
-    </svg>
-  );
-}
+const railTile =
+  "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint";
 
-function EscalationIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <svg
-      width="19"
-      height="19"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className="shrink-0"
-    >
-      {children}
-    </svg>
-  );
-}
-
+/**
+ * The app rail from the design.md/Figma reference: a 60 px icon-only strip on
+ * the deep plum background. The active tile uses plum/500 (#513431); workspace
+ * identity lives in the top bar, so the rail carries navigation only.
+ */
 export function AppSidebar({
   issueCount,
   pendingEscalationsCount = 0,
-  workspaces,
-  activeTenantId,
 }: {
   issueCount: number;
   /** Pending escalation count shown on the Escalations rail tile. */
   pendingEscalationsCount?: number;
-  workspaces: WorkspaceChoice[];
-  activeTenantId: string | null;
 }) {
   const pathname = usePathname();
-  const collapsed = useSyncExternalStore(subscribeCollapsed, collapsedNow, () => false);
-
-  const toggle = () => {
-    try {
-      window.localStorage.setItem(COLLAPSE_KEY, collapsedNow() ? "0" : "1");
-    } catch {
-      /* private mode */
-    }
-    window.dispatchEvent(new Event(COLLAPSE_EVENT));
-  };
-
   const overview = isNavItemActive(pathname, "/dashboard");
   const issues = isNavItemActive(pathname, "/issues");
   const team = isNavItemActive(pathname, "/settings/team");
   const escalations = isNavItemActive(pathname, "/escalations");
-  const label = collapsed ? "lg:sr-only" : "";
 
   return (
-    <aside
-      className={`flex w-full flex-col gap-4 bg-[#311916] px-4 py-5 text-[#EDE2E0] lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:overflow-y-auto ${
-        collapsed ? "lg:w-[60px] lg:px-2" : "lg:w-[248px]"
-      }`}
-    >
-      <div className={`flex items-center ${collapsed ? "lg:justify-center" : "justify-between"} px-1`}>
-        <Link href="/dashboard" aria-label="Ziki" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint">
-          <Image
-            src={asset("ziki-logo-dark.png")}
-            alt=""
-            width={110}
-            height={36}
-            className={`h-9 w-[110px] object-contain ${collapsed ? "lg:hidden" : ""}`}
-            unoptimized
-            priority
-          />
-          {collapsed ? (
-            <Image
-              src={asset("ziki-mark.png")}
-              alt=""
-              width={28}
-              height={28}
-              className="hidden h-7 w-7 lg:block"
-              unoptimized
-            />
-          ) : null}
-        </Link>
-        <button
-          type="button"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!collapsed}
-          onClick={toggle}
-          className="hidden h-[30px] w-[30px] items-center justify-center rounded-full border border-[#34507F] text-[#C9D6EF] lg:inline-flex"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d={collapsed ? "m9 18 6-6-6-6" : "m15 18-6-6 6-6"} />
-          </svg>
-        </button>
-      </div>
-
-      <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="sidebar" />
-
-      <nav aria-label="Workspace" className="flex flex-col gap-1.5">
-        <SidebarLink href="/dashboard" active={overview} labelClass={label} label="Overview">
-          <NavIcon>
+    // Phones: a slim icon strip above the top bar. From lg up: the 60 px rail.
+    <aside className="flex w-full flex-row items-center gap-1 bg-[#311916] px-2 py-2 text-[#EDE2E0] lg:sticky lg:top-0 lg:h-dvh lg:w-[60px] lg:shrink-0 lg:flex-col lg:gap-2 lg:py-4">
+      <Link
+        href="/dashboard"
+        aria-label="Ziki"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint"
+      >
+        <Image
+          src={asset("ziki-mark.png")}
+          alt=""
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+          unoptimized
+          priority
+        />
+      </Link>
+      <nav aria-label="Workspace" className="flex flex-row items-center gap-1 lg:flex-col lg:gap-1.5">
+        <RailTile href="/dashboard" label="Overview" active={overview}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="9" rx="1.5" />
             <rect x="14" y="3" width="7" height="5" rx="1.5" />
             <rect x="14" y="12" width="7" height="9" rx="1.5" />
             <rect x="3" y="16" width="7" height="5" rx="1.5" />
-          </NavIcon>
-        </SidebarLink>
-        <div className="mx-3 my-1.5 h-px bg-[#3B2421]" />
-        <SidebarLink href="/issues" active={issues} labelClass={label} label="Issues" count={issueCount}>
-          <NavIcon>
+          </svg>
+        </RailTile>
+        <RailTile href="/issues" label="Issues" active={issues} count={issueCount}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
             <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-          </NavIcon>
-        </SidebarLink>
-        <SidebarLink href="/settings/team" active={team} labelClass={label} label="Team">
-          <NavIcon>
+          </svg>
+        </RailTile>
+        <RailTile href="/settings/team" label="Team" active={team}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
             <path d="M16 3.1a4 4 0 0 1 0 7.8" />
-          </NavIcon>
-        </SidebarLink>
-        <SidebarLink
+          </svg>
+        </RailTile>
+        <RailTile
           href="/escalations"
-          active={escalations}
-          labelClass={label}
           label="Escalations"
-          count={pendingEscalationsCount > 0 ? pendingEscalationsCount : undefined}
+          active={escalations}
+          count={pendingEscalationsCount}
         >
-          <EscalationIcon>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z" />
             <path d="M12 9v4" />
             <path d="M12 17h.01" />
-          </EscalationIcon>
-        </SidebarLink>
+          </svg>
+        </RailTile>
       </nav>
     </aside>
   );
 }
 
-function SidebarLink({
+function RailTile({
   href,
-  active,
   label,
-  labelClass,
-  count,
+  active,
+  count = 0,
   children,
 }: {
   href: string;
-  active: boolean;
   label: string;
-  labelClass: string;
+  active: boolean;
   count?: number;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
+      aria-label={label}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-11 items-center gap-3 rounded-[14px] px-4 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint ${
+      title={label}
+      className={`${railTile} ${
         active
-          ? "bg-electric-blue-strong font-semibold text-white shadow-[0_8px_22px_rgba(46,111,239,0.45)]"
-          : "font-medium text-[#DCE5F5] hover:bg-white/5 hover:text-white"
+          ? "bg-[#513431] text-white"
+          : "text-[#DCE5F5] hover:bg-[#513431] hover:text-white"
       }`}
     >
       {children}
-      <span className={`min-w-0 flex-1 truncate ${labelClass}`}>{label}</span>
-      {typeof count === "number" ? (
-        <span className={`rounded-full bg-white/20 px-2 text-xs font-semibold tabular-nums ${labelClass}`}>
-          {count > 999 ? "999+" : count}
+      {count > 0 ? (
+        <span
+          aria-hidden="true"
+          className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-[#311916] bg-electric-blue-strong px-1 text-[10px] font-bold text-white"
+        >
+          {count > 99 ? "99+" : count}
         </span>
       ) : null}
     </Link>

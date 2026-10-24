@@ -176,6 +176,7 @@ function HeaderWorkspaceSwitcher({
           onClick={() => setOpen((current) => !current)}
           className={`inline-flex h-8 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
         >
+          <span className="sr-only">Active workspace, </span>
           <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
           <span className="truncate">{label}</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -367,7 +368,7 @@ export function AppHeader({
           <HeaderWorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
         </div>
 
-        <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
+        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
           <NotificationsBell unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
         </div>
