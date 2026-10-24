@@ -34,7 +34,10 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
       >
-        <span>Agents</span>
+        <span data-icon="agent" aria-hidden="true">
+          <AgentIcon />
+        </span>
+        Agents
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -70,6 +73,27 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Agent icon (matches artifact: person silhouette). */
+function AgentIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M12 4v4" />
+    </svg>
+  );
+}
+
+/** Trophy icon for points badge (matches artifact: 🏆 5 pts). */
+function TrophyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8" />
+      <path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
   );
 }
 
@@ -174,6 +198,9 @@ export function AppHeader({
               <span className="truncate font-semibold text-zk-text">{userName}</span>
               {points > 0 ? (
                 <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
+                  <span data-icon="trophy" aria-hidden="true">
+                    <TrophyIcon />
+                  </span>
                   {points} pts
                 </span>
               ) : null}
