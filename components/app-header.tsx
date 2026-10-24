@@ -32,7 +32,7 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
         aria-expanded={open}
         aria-controls="agents-nav-menu"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3 py-1.5 text-sm text-zk-text hover:bg-zk-chip"
       >
         <span data-icon="agent" aria-hidden="true">
           <AgentIcon />
@@ -191,7 +191,7 @@ export function AppHeader({
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3 py-1.5 text-sm text-zk-text hover:bg-zk-chip"
             >
               <span className="sr-only">Account menu for {userName}</span>
               <Avatar name={userName} image={userImage} size="sm" variant="solid" />
