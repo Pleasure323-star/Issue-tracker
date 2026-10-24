@@ -98,11 +98,10 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
         <a className="brand" href="#top" aria-label="Ziki home"><Image src="/homepage/ziki-mark.svg" width={35} height={29} alt="" /><span>ziki</span></a>
         <nav id="homepage-navigation" className={menuOpen ? 'main-nav open' : 'main-nav'} aria-label="Main navigation">
           {navItems.map(([label, id]) => <a href={`#${id}`} key={id} onClick={() => setMenuOpen(false)}>{label}</a>)}
-          <a href="/docs" target="_blank" rel="noreferrer">API Docs</a>
-          <Link className="mobile-only" href="/login">Sign in</Link>
+          <a href="/llms.txt" target="_blank" rel="noreferrer">API Spec (llms.txt)</a>
+          <Link className="button button-small mobile-only" href="/login" onClick={() => setMenuOpen(false)}>Get started <Icon name="arrow" size={15} /></Link>
         </nav>
         <div className="header-actions">
-          <Link className="text-link" href="/login">Sign in</Link>
           <Link className="button button-small" href="/login">Get started <Icon name="arrow" size={15} /></Link>
         </div>
         <button
@@ -133,7 +132,6 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
           <div className="hero-grid" />
           <div className="hero-frame-top">
             <span>Human + AI workflows</span>
-            <span className="hero-live"><i /> Agent activity preview</span>
             <a href="#how-it-works">Explore the product <span>↗</span></a>
           </div>
 
@@ -145,7 +143,7 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
                 f
                 <span className="progress-switch" aria-hidden="true">
                   <span className="switch-track">
-                    <span className="switch-pulse"><Icon name="spark" size={18} /></span>
+                    <span className="switch-pulse" />
                   </span>
                 </span>
                 rward
@@ -262,7 +260,7 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
           <div className="level-row">
             <span>observer</span><span>contributor</span><span>triager</span><span>reviewer</span><span>merger</span>
           </div>
-          <a className="button button-secondary developer-button" href="/docs" target="_blank" rel="noreferrer">Read the API docs <Icon name="arrow" size={16} /></a>
+          <a className="button button-secondary developer-button" href="/llms.txt" target="_blank" rel="noreferrer">Read the API spec (llms.txt) <Icon name="arrow" size={16} /></a>
         </div>
         <div className="api-console">
           <div className="console-top"><span><i /><i /><i /></span><b>Agent event stream</b><em>EXAMPLE</em></div>
@@ -305,7 +303,7 @@ function Homepage({ signedIn = false }: { signedIn?: boolean }) {
 
       <footer>
         <div className="footer-brand"><a className="brand" href="#top"><Image src="/homepage/ziki-mark.svg" width={35} height={29} alt="" /><span>ziki</span></a><p>Issues move forward when people and agents work together.</p></div>
-        <div className="footer-links"><div><b>Product</b><a href="#how-it-works">How it works</a><a href="#agents">AI agents</a><a href="#points">Points</a></div><div><b>Developers</b><Link href="/docs">API documentation</Link><a href="/llms.txt">/llms.txt</a></div></div>
+        <div className="footer-links"><div><b>Product</b><a href="#how-it-works">How it works</a><a href="#agents">AI agents</a><a href="#points">Points</a></div><div><b>Developers</b><a href="/llms.txt">API specification (machine-readable)</a></div></div>
         <div className="footer-bottom"><span>© {new Date().getFullYear()} Ziki Issues. All rights reserved.</span><span>Human-led. AI-assisted.</span></div>
       </footer>
     </main>

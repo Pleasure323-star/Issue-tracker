@@ -1,26 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { AgentLevel } from "@prisma/client";
 import { SignOutButton } from "@/components/sign-out-button";
-import { BrandLockup } from "@/components/brand-lockup";
 import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
-import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
-import { RoleSwitcher } from "@/components/role-switcher";
 import {
-  SWITCH_TENANT_LINK,
+  AGENT_MENU_LINKS,
   headerNavItems,
+  initialsOf,
   isNavItemActive,
   realRoleOf,
   roleViewLabels,
-  type HeaderNavItem,
 } from "@/lib/header-nav";
-import { isAdmin, type AppRole } from "@/lib/roles";
-import { FOCUSABLE, wrapFocusIndex } from "@/lib/focus-trap";
+import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
+import { isSuperAdmin, type AppRole } from "@/lib/roles";
 import { Avatar } from "@/components/avatar";
-import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
-import { pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { AccountThemeSelector } from "@/components/theme-toggle";
+import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { recentNotificationsAction } from "@/app/actions/notifications";
+import { LocalTime } from "@/components/local-time";
+import { BASE_PATH } from "@/lib/base-path";
+import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
+import { ZikiMark } from "@/components/ziki-mark";
+
+const linkFocus =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-blue focus-visible:ring-offset-2";
+
+export type ShellAgent = {
+  id: string;
+  name: string;
+  level: string;
+};
 
 /** Closes a popover on outside click or Escape, returning focus to its trigger. */
 function useDismiss(
@@ -49,242 +61,341 @@ function useDismiss(
   }, [open, close, containerRef, triggerRef]);
 }
 
-/**
- * While the mobile menu is open it behaves like a modal (#308): Tab cycles
- * between the toggle and the panel's controls, everything outside the header
- * is inert — unreachable by keyboard and hidden from screen readers — and
- * the page behind stops scrolling. Escape and outside clicks are handled by
- * useDismiss, which returns focus to the toggle.
- */
-function useMenuFocusTrap(
-  open: boolean,
-  headerRef: React.RefObject<HTMLElement | null>,
-  panelRef: React.RefObject<HTMLElement | null>,
-  triggerRef: React.RefObject<HTMLElement | null>,
-) {
-  useEffect(() => {
-    const header = headerRef.current;
-    const panel = panelRef.current;
-    if (!open || !header || !panel) return;
-
-    // Everything beside the header — main content, the skip link, the
-    // floating report button — goes inert for as long as the menu is open.
-    const siblings = Array.from(header.parentElement?.children ?? []).filter(
-      (el): el is HTMLElement => el !== header && el instanceof HTMLElement,
-    );
-    const wasInert = siblings.map((el) => el.inert);
-    siblings.forEach((el) => (el.inert = true));
-
-    const scroll = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = "hidden";
-
-    const stops = () => [
-      ...(triggerRef.current ? [triggerRef.current] : []),
-      ...Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)),
-    ];
-
-    // Start on the first link, so the first Tab is already inside the menu.
-    panel.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const list = stops();
-      const index = list.indexOf(document.activeElement as HTMLElement);
-      const next = wrapFocusIndex(index, list.length, event.shiftKey);
-      if (next === null) return;
-      event.preventDefault();
-      list[next].focus();
-    };
-    document.addEventListener("keydown", onKey);
-
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      siblings.forEach((el, i) => (el.inert = wasInert[i]));
-      document.documentElement.style.overflow = scroll;
-    };
-  }, [open, headerRef, panelRef, triggerRef]);
-}
-
-function PlusIcon({ className = "h-4 w-4" }: { className?: string }) {
+function PlusIcon() {
   return (
-    <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-      <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }
 
-/** Bell linking to the notification feed, with the unread count (#216). */
-function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
-  const label =
-    unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
+function TrophyIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" />
+      <path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8" />
+      <path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+function AgentIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M12 4v4" />
+      <path d="M9 14h.01" />
+      <path d="M15 14h.01" />
+    </svg>
+  );
+}
+
+function NavIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      {children}
+    </svg>
+  );
+}
+
+function TopNavLink({
+  href,
+  active,
+  label,
+  count,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
   return (
     <Link
-      href="/notifications"
-      aria-label={label}
+      href={href}
       aria-current={active ? "page" : undefined}
-      title={label}
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-slate-100 hover:text-slate-900 ${linkFocus} ${
-        active ? "bg-slate-100 text-slate-900" : "text-slate-600"
+      // Below lg this is a tab in the bottom strip: icon over a short label.
+      className={`relative inline-flex shrink-0 items-center whitespace-nowrap font-medium ${linkFocus} max-lg:min-w-16 max-lg:flex-1 max-lg:flex-col max-lg:gap-0.5 max-lg:rounded-xl max-lg:py-1.5 max-lg:text-[11px] lg:h-9 lg:gap-2 lg:rounded-full lg:px-2.5 lg:text-[13px] ${
+        active ? "text-zk-accent lg:bg-zk-tint" : "text-zk-text2 hover:text-zk-text lg:hover:bg-zk-chip"
       }`}
     >
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
-        />
-      </svg>
-      {unreadCount > 0 ? (
+      <span className={`relative flex items-center justify-center max-lg:h-7 max-lg:w-12 max-lg:rounded-full ${active ? "max-lg:bg-zk-tint" : ""}`}>
+        {children}
+        {typeof count === "number" ? (
+          <span
+            aria-hidden="true"
+            className="rounded-full px-1.5 font-mono text-[10px] font-normal tabular-nums max-lg:absolute max-lg:-right-0.5 max-lg:-top-1 max-lg:bg-electric-blue-strong max-lg:text-white lg:hidden"
+          >
+            {count > 999 ? "999+" : count}
+          </span>
+        ) : null}
+      </span>
+      {label}
+      {typeof count === "number" ? (
         <span
-          aria-hidden="true"
-          className="absolute -right-0.5 -top-0.5 inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-teal-700 px-1 text-[10px] font-semibold leading-[1.125rem] text-white ring-2 ring-white"
+          className={`rounded-full px-1.5 font-mono text-[11px] font-normal tabular-nums max-lg:sr-only ${
+            active ? "bg-zk-surface text-zk-accent" : "bg-zk-chip text-zk-muted"
+          }`}
         >
-          {unreadCount > 99 ? "99+" : unreadCount}
+          {count > 999 ? "999+" : count}
         </span>
       ) : null}
     </Link>
   );
 }
 
-const linkFocus =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2";
-
-function CountBadge({ count }: { count: number }) {
+/** Dashboard, Issues and Ranking: the workspace pages, formerly the sidebar. */
+function TopNav({ pathname, issueCount }: { pathname: string | null; issueCount?: number }) {
   return (
-    <span
-      aria-label={`${count} pending`}
-      className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+    <nav
+      aria-label="Workspace"
+      // Phones and tablets: a tab strip fixed to the bottom of the screen,
+      // clear of the home indicator. From lg it sits inline in the top bar.
+      className="flex items-center max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-around max-lg:border-t max-lg:border-zk-border max-lg:bg-zk-surface max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.375rem,env(safe-area-inset-bottom))] max-lg:shadow-[0_-1px_3px_rgba(0,0,0,0.04)] lg:gap-1"
     >
-      {count > 99 ? "99+" : count}
-    </span>
+      <TopNavLink href="/dashboard" active={isNavItemActive(pathname, "/dashboard")} label="Dashboard">
+        <NavIcon>
+          <rect x="3" y="3" width="7" height="9" rx="1.5" />
+          <rect x="14" y="3" width="7" height="5" rx="1.5" />
+          <rect x="14" y="12" width="7" height="9" rx="1.5" />
+          <rect x="3" y="16" width="7" height="5" rx="1.5" />
+        </NavIcon>
+      </TopNavLink>
+      <TopNavLink href="/issues" active={isNavItemActive(pathname, "/issues")} label="Issues" count={issueCount}>
+        <NavIcon>
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        </NavIcon>
+      </TopNavLink>
+      <TopNavLink href="/workers" active={isNavItemActive(pathname, "/workers")} label="Ranking">
+        <NavIcon>
+          <path d="M8 21V11H3v10M15 21V5H9v16M21 21v-7h-5v7" />
+        </NavIcon>
+      </TopNavLink>
+    </nav>
   );
 }
 
-function tabClass(active: boolean) {
-  return `relative inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${linkFocus} ${
-    active
-      ? "bg-teal-50 font-medium text-teal-900"
-      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-  }`;
-}
 
-function NavTab({ item, pathname }: { item: HeaderNavItem; pathname: string | null }) {
-  const active = isNavItemActive(pathname, item.href);
+/** In-place notification preview; opening the bell never marks alerts read (#615). */
+function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [notifications, setNotifications] = useState<Awaited<ReturnType<typeof recentNotificationsAction>> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDismiss(open, () => setOpen(false), containerRef, triggerRef);
+
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.focus({ preventScroll: true });
+    let cancelled = false;
+    recentNotificationsAction().then(
+      (items) => { if (!cancelled) setNotifications(items); },
+      () => { if (!cancelled) setFailed(true); },
+    );
+    return () => { cancelled = true; };
+  }, [open, attempt]);
+
+  function loadPreview() {
+    setNotifications(null);
+    setFailed(false);
+  }
+  const label =
+    unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
   return (
-    <Link href={item.href} aria-current={active ? "page" : undefined} className={tabClass(active)}>
-      <span>{item.label}</span>
-      {typeof item.badge === "number" && item.badge > 0 ? <CountBadge count={item.badge} /> : null}
-    </Link>
-  );
-}
-
-function NavMenu({
-  item,
-  pathname,
-  open,
-  onToggle,
-  onClose,
-}: {
-  item: HeaderNavItem;
-  pathname: string | null;
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  useDismiss(open, onClose, ref, buttonRef);
-  const active = item.children?.some((sub) => isNavItemActive(pathname, sub.href)) ?? false;
-  const menuId = `nav-menu-${item.label.toLowerCase().replace(/\s+/g, "-")}`;
-
-  return (
-    <div ref={ref} className="relative flex items-stretch">
+    <div ref={containerRef} className="flex items-center sm:relative" onBlur={(event) => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
+    }}>
       <button
-        ref={buttonRef}
+        ref={triggerRef}
         type="button"
-        aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={menuId}
-        onClick={onToggle}
-        className={tabClass(active)}
+        aria-controls="notification-preview"
+        onClick={() => { loadPreview(); setOpen((value) => !value); }}
+        aria-label={label}
+        title={label}
+        // A plain icon, no ring: the bell only needs to be findable, not prominent.
+        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-zk-chip ${linkFocus} ${active ? "text-zk-accent" : "text-zk-text"}`}
       >
-        <span>{item.label}</span>
-        {typeof item.badge === "number" && item.badge > 0 ? <CountBadge count={item.badge} /> : null}
-        <svg
-          className={`h-4 w-4 text-slate-400 ${open ? "rotate-180" : ""}`}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <BellIcon />
+        {unreadCount > 0 ? (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-zk-surface bg-electric-blue-strong px-1 text-[11px] font-bold text-white"
+          >
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        ) : null}
       </button>
       {open ? (
         <div
-          id={menuId}
-          role="menu"
-          aria-label={item.label}
-          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"
+          ref={panelRef}
+          id="notification-preview"
+          role="region"
+          aria-label="Recent notifications"
+          tabIndex={-1}
+          className="absolute right-4 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-zk-border bg-zk-surface text-zk-text shadow-xl focus:outline-none sm:right-0"
         >
-          {item.children?.map((sub) => {
-            const subActive = isNavItemActive(pathname, sub.href);
-            return (
-              <Link
-                key={sub.href}
-                href={sub.href}
-                role="menuitem"
-                onClick={onClose}
-                className={`flex flex-col rounded-lg px-3 py-2 text-sm transition-colors ${linkFocus} ${
-                  subActive
-                    ? "bg-teal-50 font-medium text-teal-900"
-                    : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                <span className="flex items-center justify-between gap-3">
-                  <span className="font-medium">{sub.label}</span>
-                  {typeof sub.badge === "number" && sub.badge > 0 ? <CountBadge count={sub.badge} /> : null}
-                </span>
-                {sub.description ? (
-                  <span className="font-normal text-xs text-slate-500">{sub.description}</span>
-                ) : null}
-              </Link>
-            );
-          })}
+          <h2 className="border-b border-zk-border px-4 py-3 text-sm font-semibold">Notifications</h2>
+          <div className="max-h-[min(26rem,calc(100dvh-11rem))] overflow-y-auto overscroll-contain">
+            {failed ? (
+              <div className="p-4 text-sm">
+                <p role="alert">Could not load notifications.</p>
+                <button type="button" className={`mt-2 text-zk-accent hover:underline ${linkFocus}`} onClick={() => { loadPreview(); setAttempt((value) => value + 1); }}>Try again</button>
+              </div>
+            ) : notifications === null ? (
+              <p role="status" className="p-4 text-sm text-zk-muted">Loading notifications...</p>
+            ) : notifications.length === 0 ? (
+              <p role="status" className="p-4 text-sm text-zk-muted">No notifications yet.</p>
+            ) : (
+              <ul className="divide-y divide-zk-divider">
+                {notifications.map((notification) => (
+                  <li key={notification.id}>
+                    {/* Plain links avoid prefetching the route that marks an alert read. */}
+                    <a href={`${BASE_PATH}/notifications/${notification.id}`} className={`flex items-start gap-3 px-4 py-3 text-sm hover:bg-zk-chip ${linkFocus} ${!notification.readAt ? "bg-zk-tint" : ""}`}>
+                      <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${!notification.readAt ? "bg-electric-blue" : "bg-transparent"}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block break-words ${!notification.readAt ? "font-medium text-zk-text" : "text-zk-text2"}`}>
+                          {!notification.readAt ? <span className="sr-only">Unread: </span> : null}
+                          {notification.title}
+                        </span>
+                        <LocalTime date={notification.createdAt} className="mt-1 block text-xs text-zk-muted" />
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Link href="/notifications" onClick={() => setOpen(false)} className={`block border-t border-zk-border px-4 py-3 text-sm font-medium text-zk-accent hover:bg-zk-chip ${linkFocus}`}>View all notifications</Link>
         </div>
       ) : null}
     </div>
   );
 }
 
-function PointsChip({
+function levelLabel(level: string) {
+  return level in AGENT_LEVEL_LABELS ? AGENT_LEVEL_LABELS[level as AgentLevel] : level;
+}
+
+function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: ShellAgent[] }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useDismiss(open, () => setOpen(false), containerRef, buttonRef);
+  const current = (pathname ?? "").replace(/\/+$/, "");
+  const menuId = useId();
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((value) => !value)}
+        title="Agents"
+        // Phones: a plain icon, like the bell beside it.
+        className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-3.5 text-[13px] font-medium text-zk-text hover:bg-zk-chip max-sm:h-9 max-sm:w-9 max-sm:border-0 max-sm:bg-transparent max-sm:px-0 ${linkFocus}`}
+      >
+        <span className="text-electric-blue max-sm:text-zk-text">
+          <AgentIcon />
+        </span>
+        <span className="max-sm:sr-only">Agents</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="max-sm:hidden">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          id={menuId}
+          role="menu"
+          className="absolute right-0 top-12 z-50 flex w-[260px] max-w-[calc(100vw-2rem)] flex-col gap-0.5 rounded-2xl border border-zk-border bg-zk-surface p-2 shadow-[0_16px_40px_rgba(11,23,51,0.16)]"
+        >
+          {agents.length > 0 ? (
+            <span className="px-2.5 pb-1.5 pt-2 text-[11px] font-bold uppercase tracking-[0.06em] text-zk-muted">
+              Project agents
+            </span>
+          ) : null}
+          {agents.map((agent) => (
+            <Link
+              key={agent.id}
+              href="/settings/agents"
+              onClick={() => setOpen(false)}
+              className="flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 text-left text-zk-text"
+            >
+              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-zk-tint text-xs font-extrabold text-zk-accent">
+                {initialsOf(agent.name)}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-semibold">{agent.name}</span>
+              <span className="rounded-full bg-zk-info-bg px-2 py-0.5 text-[11px] font-bold text-zk-info-fg">
+                {levelLabel(agent.level)}
+              </span>
+            </Link>
+          ))}
+          {agents.length > 0 ? <div className="my-1 h-px bg-zk-divider" /> : null}
+          <Link
+            href="/settings/agents"
+            onClick={() => setOpen(false)}
+            className="flex min-h-11 items-center gap-2 rounded-[10px] px-2.5 font-bold text-zk-accent"
+          >
+            <PlusIcon />
+            Create agent
+          </Link>
+          {AGENT_MENU_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setOpen(false)}
+              aria-current={current === link.href ? "page" : undefined}
+              className="flex min-h-10 items-center rounded-[10px] px-2.5 font-semibold text-zk-text2"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The points pill beside the name in the account chip, as in the redesign. */
+function PointsBadge({
   points,
   solvedTasks,
-  userId,
+  targetPoints = TARGET_POINTS,
 }: {
   points: number;
   solvedTasks: number;
-  userId?: string | null;
+  targetPoints?: number;
 }) {
-  if (!userId) return null;
-  const progress = pointsProgress(points, solvedTasks);
-  const label = `${points} pts of ${TARGET_POINTS}, ${solvedTasks} solved`;
+  const progress = pointsProgress(points, solvedTasks, targetPoints);
   return (
-    <Link
-      href={`/users/${userId}`}
-      title={label}
-      className={`inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-50 ${linkFocus}`}
-    >
-      <span className="text-sm font-semibold tabular-nums text-slate-900">{points}</span>
-      <span className="text-xs text-slate-500">pts</span>
-      <span className="sr-only"> of {TARGET_POINTS}, {solvedTasks} solved</span>
-      <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-200 md:block" aria-hidden="true">
-        <span className="block h-full rounded-full bg-teal-700" style={{ width: `${progress.pointsPercent}%` }} />
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-zk-warn-bg px-[7px] text-[11.5px] font-medium text-zk-warn-fg">
+      <TrophyIcon />
+      <span className="tabular-nums">{formatPoints(points)}</span> pts
+      <span className="sr-only">
+        {" "}
+        of {targetPoints}, {solvedTasks} solved, {progress.pointsPercent}%
       </span>
-    </Link>
+    </span>
   );
 }
 
@@ -301,286 +412,155 @@ export function AppHeader({
   activeTenantId = null,
   points = 0,
   solvedTasks = 0,
+  targetPoints = TARGET_POINTS,
+  agents = [],
+  reportFormUrl,
+  issueCount,
 }: {
   userName?: string | null;
-  /** Their picture, if their sign-in provider gave one (#290). */
   userImage?: string | null;
   role?: AppRole | null;
   isRealSuperAdmin?: boolean;
   isRealAdmin?: boolean;
-  /** Unread in-app notifications (#216). */
   unreadCount?: number;
-  /** Unresolved escalations from agents (#763). */
   pendingEscalationsCount?: number;
   userId?: string | null;
-  /** Workspaces this person can open, and the one currently active. */
   workspaces?: WorkspaceChoice[];
   activeTenantId?: string | null;
-  /** This person's points in the open workspace. */
   points?: number;
   solvedTasks?: number;
+  /** Platform points goal (hard-coded fallback when unset). */
+  targetPoints?: number;
+  agents?: ShellAgent[];
+  reportFormUrl?: string;
+  /** Unresolved issues in the workspace, shown on the Issues link. */
+  issueCount?: number;
 }) {
   const pathname = usePathname();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
-
   const accountRef = useRef<HTMLDivElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const menuPanelRef = useRef<HTMLDivElement>(null);
-
   const closeAccount = () => setAccountOpen(false);
-  const closeMenu = () => setMenuOpen(false);
   useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
-  useDismiss(menuOpen, closeMenu, headerRef, menuButtonRef);
-  useMenuFocusTrap(menuOpen, headerRef, menuPanelRef, menuButtonRef);
 
-  // Close menus when the page changes (state adjusted during render, not in an effect).
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
     setLastPath(pathname);
-    setMenuOpen(false);
     setAccountOpen(false);
-    setOpenMenu(null);
   }
 
-  const items = headerNavItems(role, {
-    pendingEscalations: pendingEscalationsCount,
-  });
-  const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
+  const items = headerNavItems(role, { pendingEscalations: pendingEscalationsCount });
+  const showEscalations = items.some((item) => item.href === "/escalations");
   const realRole = realRoleOf({ isRealSuperAdmin, isRealAdmin });
-  const onNewIssue =
-    pathname?.replace(/\/+$/, "") === "/issues/new" ||
-    pathname?.replace(/\/+$/, "") === "/bugs/new";
-  const effectiveRole: AppRole = role ?? "user";
 
   return (
-    <header ref={headerRef} className="sticky top-0 z-40">
-      {/* Blur lives on its own layer. backdrop-filter on the header itself
-          clips overflow, which hid the account menu under the bar. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
-      />
-      <div className={`relative flex h-14 items-center gap-4 sm:gap-6 ${PAGE_CONTAINER_CLASS}`}>
-        <div className="shrink-0">
-          <BrandLockup href="/issues" size="sm" />
-        </div>
-
-        {/* Active workspace. Below lg it moves into the menu. */}
-        <div className="hidden shrink-0 lg:block">
-          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
-        </div>
-
-        <nav aria-label="Main" className="hidden h-full min-w-0 items-center lg:flex">
-          {items.map((item) =>
-            item.children && item.children.length > 0 ? (
-              <NavMenu
-                key={item.label}
-                item={item}
-                pathname={pathname}
-                open={openMenu === item.label}
-                onToggle={() => setOpenMenu((current) => (current === item.label ? null : item.label))}
-                onClose={() => setOpenMenu(null)}
-              />
-            ) : (
-              <NavTab key={item.href} item={item} pathname={pathname} />
-            ),
-          )}
-        </nav>
-
-        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
-          <PointsChip points={points} solvedTasks={solvedTasks} userId={userId} />
-
-          <NotificationsBell
-            unreadCount={unreadCount}
-            active={isNavItemActive(pathname, "/notifications")}
-          />
-
-          <ThemeToggle />
-
-          <Link
-            href="/issues/new"
-            aria-current={onNewIssue ? "page" : undefined}
-            aria-label="New issue"
-            className={`inline-flex h-9 items-center gap-1.5 rounded-full bg-teal-700 px-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-800 sm:px-3.5 ${linkFocus}`}
-          >
-            <PlusIcon />
-            <span className="hidden sm:inline">New issue</span>
+    // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
+    // and a header that tall pinned to the top covers the page under it.
+    <header className="relative z-40 border-b border-zk-border bg-zk-surface shadow-[0_1px_3px_rgba(0,0,0,0.04)] lg:sticky lg:top-0">
+      <div className={`${PAGE_CONTAINER_CLASS} flex flex-wrap items-center gap-x-3 gap-y-2 py-3 max-sm:py-2 sm:px-6`}>
+        {/* Below lg the nav lives in the bottom strip, leaving one row here.
+            Phones show just the organisation name on the left, no logo. */}
+        <div className="flex min-w-0 items-center gap-2">
+          <Link href="/dashboard" aria-label="Ziki" className={`flex shrink-0 items-center gap-2 rounded-full max-sm:hidden ${linkFocus}`}>
+            <ZikiMark className="h-7 w-auto text-electric-blue-strong" />
+            <span aria-hidden="true" className="pr-1 text-[15px] font-semibold tracking-[-0.02em] text-zk-text">
+              ziki
+            </span>
           </Link>
+          <span aria-hidden="true" className="h-[18px] w-px shrink-0 bg-zk-border max-sm:hidden" />
+          <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="bar" className="min-w-0 max-sm:max-w-44" />
+        </div>
 
-          {/* Desktop account menu */}
-          <div ref={accountRef} className="relative hidden lg:block">
+        <TopNav pathname={pathname} issueCount={issueCount} />
+
+        {/* Phones and tablets: min-w-0 lets the group narrow so its flex-wrap
+            breaks the chips onto rows (no sideways scroll at 360px or 768px).
+            From lg up it keeps shrink-0 so the account controls are never
+            squeezed. */}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:gap-1 lg:shrink-0">
+          <AgentsMenu pathname={pathname} agents={agents} />
+
+          <div ref={accountRef} className="relative">
             <button
               ref={accountButtonRef}
               type="button"
-              aria-haspopup="true"
+              aria-haspopup="menu"
               aria-expanded={accountOpen}
               aria-controls="account-menu"
               onClick={() => setAccountOpen((open) => !open)}
-              className={`relative flex items-center gap-1 rounded-full p-0.5 pr-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 ${linkFocus}`}
+              className={`inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-zk-border bg-zk-surface py-[5px] pl-[5px] pr-3 text-zk-text hover:bg-zk-chip ${linkFocus}`}
             >
-              <span className="sr-only">Account menu for {userName}</span>
-              <Avatar name={userName} image={userImage} size="md" />
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path
-                  fillRule="evenodd"
-                  d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-                  clipRule="evenodd"
-                />
+              <span className="sr-only">Account menu for </span>
+              <Avatar name={userName} image={userImage} size="md" variant="solid" />
+              <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium">
+                {/* Phones show the avatar and points; the name is still read out. */}
+                <span className="max-w-40 truncate max-sm:sr-only">{userName}</span>
+                {userId ? (
+                  <PointsBadge points={points} solvedTasks={solvedTasks} targetPoints={targetPoints} />
+                ) : null}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className="shrink-0 text-zk-muted max-sm:hidden">
+                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
               </svg>
             </button>
 
             {accountOpen ? (
               <div
                 id="account-menu"
-                className="absolute right-0 top-full z-50 mt-2 w-64 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm motion-safe:animate-[header-pop_120ms_ease-out]"
+                role="menu"
+                aria-label="Account"
+                className="absolute right-0 top-[54px] z-50 flex w-[300px] max-w-[calc(100vw-2rem)] origin-top-right flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)] motion-safe:animate-[header-pop_120ms_ease-out]"
               >
-                <AccountSummary userName={userName} userImage={userImage} realRole={realRole} />
-                {canSwitchRole ? (
-                  <div className="border-t border-slate-100 px-2 py-2.5">
-                    <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
-                  </div>
+                <AccountSummary
+                  userName={userName}
+                  userImage={userImage}
+                  realRole={realRole}
+                />
+                <MenuLink href="/settings/profile" active={isNavItemActive(pathname, "/settings/profile")}>
+                  Profile
+                </MenuLink>
+                <AccountThemeSelector />
+                <div className="mx-2 h-px bg-zk-divider" />
+                {showEscalations ? (
+                  <MenuLink href="/escalations" active={isNavItemActive(pathname, "/escalations")}>
+                    <span className="flex-1">Escalations</span>
+                    {pendingEscalationsCount > 0 ? (
+                      <span
+                        aria-label={`${pendingEscalationsCount} pending`}
+                        className="rounded-full bg-zk-bad-soft px-2 py-0.5 text-xs font-bold tabular-nums text-zk-bad-fg"
+                      >
+                        {pendingEscalationsCount > 99 ? "99+" : pendingEscalationsCount}
+                      </span>
+                    ) : null}
+                  </MenuLink>
                 ) : null}
-                <div className="border-t border-slate-100 pt-1.5">
-                  <AccountThemeSelector />
-                  {isAdmin(effectiveRole) ? (
-                    <MenuLink
-                      href="/admin/dashboard"
-                      active={isNavItemActive(pathname, "/admin/dashboard")}
-                    >
-                      Dashboard
-                    </MenuLink>
-                  ) : null}
-                  <MenuLink
-                    href={SWITCH_TENANT_LINK.href}
-                    active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
-                  >
-                    {SWITCH_TENANT_LINK.label}
+                {isSuperAdmin(role) ? (
+                  <MenuLink href="/admin/users" active={isNavItemActive(pathname, "/admin/users")}>
+                    Admins
                   </MenuLink>
-                  <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
-                    Settings
-                  </MenuLink>
-                  <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
-                    Docs & /llms.txt
-                  </MenuLink>
-                  <SignOutButton userId={userId} className={linkFocus} />
-                </div>
+                ) : null}
+                <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")}>
+                  Settings
+                </MenuLink>
+                <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")}>
+                  Documentation
+                </MenuLink>
+                {reportFormUrl ? (
+                  <MenuLink href={reportFormUrl}>Report issue</MenuLink>
+                ) : null}
+                <div className="mx-2 h-px bg-zk-divider" />
+                <SignOutButton
+                  userId={userId}
+                  className={`${linkFocus} font-bold text-zk-bad-fg hover:bg-zk-bad-soft`}
+                />
               </div>
             ) : null}
           </div>
 
-          {/* Mobile menu toggle */}
-          <button
-            ref={menuButtonRef}
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 lg:hidden ${linkFocus}`}
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-              {menuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
-              )}
-            </svg>
-          </button>
+          {/* The bell sits last, after the account chip. */}
+          <NotificationsBell key={`${userId}:${activeTenantId}:${pathname}`} unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
         </div>
       </div>
-
-      {/* Mobile menu */}
-      {menuOpen ? (
-        <div
-          id="mobile-menu"
-          ref={menuPanelRef}
-          className="relative max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-4 pt-2 lg:hidden"
-        >
-          <div className="border-b border-slate-200 pb-3">
-            <WorkspaceSwitcher
-              workspaces={workspaces}
-              activeTenantId={activeTenantId}
-              fullWidth
-            />
-          </div>
-          <nav aria-label="Main" className="flex flex-col py-1">
-            {items.map((item) => {
-              if (item.children && item.children.length > 0) {
-                return (
-                  <div key={item.label} className="py-1">
-                    <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      {item.label}
-                    </div>
-                    <div className="space-y-0.5 pl-2">
-                      {item.children.map((sub) => (
-                        <MenuLink
-                          key={sub.href}
-                          href={sub.href}
-                          active={isNavItemActive(pathname, sub.href)}
-                          badge={sub.badge}
-                          large
-                        >
-                          {sub.label}
-                        </MenuLink>
-                      ))}
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <MenuLink
-                  key={item.href}
-                  href={item.href}
-                  active={isNavItemActive(pathname, item.href)}
-                  badge={item.badge}
-                  large
-                >
-                  {item.label}
-                </MenuLink>
-              );
-            })}
-            {isAdmin(effectiveRole) ? (
-              <MenuLink
-                href="/admin/dashboard"
-                active={isNavItemActive(pathname, "/admin/dashboard")}
-                large
-              >
-                Dashboard
-              </MenuLink>
-            ) : null}
-            <MenuLink
-              href={SWITCH_TENANT_LINK.href}
-              active={isNavItemActive(pathname, SWITCH_TENANT_LINK.href)}
-              large
-            >
-              {SWITCH_TENANT_LINK.label}
-            </MenuLink>
-            <MenuLink href="/settings" active={isNavItemActive(pathname, "/settings")} large>
-              Settings
-            </MenuLink>
-            <MenuLink href="/docs" active={isNavItemActive(pathname, "/docs")} large>
-              Docs & /llms.txt
-            </MenuLink>
-          </nav>
-
-          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60">
-            <AccountSummary userName={userName} userImage={userImage} realRole={realRole} />
-            {canSwitchRole ? (
-              <div className="border-t border-slate-200 px-3 py-3">
-                <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
-              </div>
-            ) : null}
-            <div className="border-t border-slate-200 p-2">
-              <AccountThemeSelector />
-              <SignOutButton userId={userId} className={linkFocus} />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </header>
   );
 }
@@ -594,13 +574,14 @@ function AccountSummary({
   userImage?: string | null;
   realRole: AppRole;
 }) {
+  const roleLabel = realRole === "user" ? "Member" : roleViewLabels[realRole];
   return (
-    <div className="flex items-center gap-3 px-2 py-2.5">
-      <Avatar name={userName} image={userImage} size="lg" />
+    <div className="flex items-center gap-3 rounded-[14px] bg-zk-tint p-3">
+      <Avatar name={userName} image={userImage} size="lg" variant="solid" />
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
-        <p className="truncate text-xs text-slate-500">
-          {realRole === "user" ? "Member" : roleViewLabels[realRole]}
+        <p className="truncate text-base font-extrabold text-zk-text">{userName}</p>
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="rounded-full bg-zk-surface px-2 py-0.5 font-bold text-zk-text2">{roleLabel}</span>
         </p>
       </div>
     </div>
@@ -609,36 +590,24 @@ function AccountSummary({
 
 function MenuLink({
   href,
-  active,
-  large = false,
-  badge,
+  active = false,
   children,
 }: {
   href: string;
-  active: boolean;
-  large?: boolean;
-  badge?: number;
+  active?: boolean;
   children: React.ReactNode;
 }) {
+  const external = href.startsWith("http");
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`flex items-center justify-between rounded-md ${large ? "px-3 py-2.5 text-[15px]" : "px-2 py-1.5 text-sm"} ${linkFocus} ${
-        active
-          ? "bg-teal-50 font-medium text-teal-900"
-          : "text-slate-700 hover:bg-slate-50"
+      {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+      className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold ${linkFocus} ${
+        active ? "bg-zk-tint text-zk-accent" : "text-zk-text hover:bg-zk-chip"
       }`}
     >
-      <span>{children}</span>
-      {typeof badge === "number" && badge > 0 ? (
-        <span
-          aria-label={`${badge} pending`}
-          className="inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white ring-1 ring-white"
-        >
-          {badge > 99 ? "99+" : badge}
-        </span>
-      ) : null}
+      {children}
     </Link>
   );
 }

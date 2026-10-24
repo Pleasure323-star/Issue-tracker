@@ -9,7 +9,10 @@ import type { ReactElement } from "react";
 
 const count = vi.hoisted(() => vi.fn());
 const findMany = vi.hoisted(() => vi.fn());
-const groupBy = vi.hoisted(() => vi.fn(async () => []));
+const groupBy = vi.hoisted(() => vi.fn(async (_args: { by: string[]; where?: Record<string, unknown> }) => {
+  void _args;
+  return [];
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -96,24 +99,21 @@ beforeEach(() => {
 });
 
 describe("issue list layout", () => {
-  it("renders the list with the project as its heading (#1063)", async () => {
+  it("renders Issues as the page title with a page-level New issue CTA", async () => {
     const html = await renderList();
     expect(html).toContain("Login button does nothing");
-    expect(html).toMatch(/<h1[^>]*>(<!-- -->)?Acme Web<\/h1>/);
+    expect(html).toMatch(/<h1[^>]*>Issues<\/h1>/);
+    expect(html).toContain('href="/issues/new"');
+    expect(html).toContain("New issue");
   });
 
-  it("has no second New issue button; the header has it (#1057)", async () => {
-    const html = await renderList();
-    expect(html).not.toContain('href="/issues/new"');
-  });
-
-  it("keeps the empty state free of a second New issue button (#1057)", async () => {
+  it("keeps New issue on the empty filter state", async () => {
     // The search matches nothing, but the tracker itself isn't empty.
     count.mockImplementation(async (args: { where?: { OR?: unknown } }) => (args?.where?.OR ? 0 : 5));
     findMany.mockResolvedValue([]);
     const html = await renderList({ q: "nothing matches" });
     expect(html).toContain("No issues match these filters.");
-    expect(html).not.toContain('href="/issues/new"');
+    expect(html).toContain('href="/issues/new"');
   });
 
   it("welcomes a new, empty project even when the workspace has issues elsewhere", async () => {
@@ -125,8 +125,31 @@ describe("issue list layout", () => {
     const html = await renderList();
     expect(html).toContain("No issues yet");
     expect(html).not.toContain("No issues match these filters.");
-    const firstRunCount = count.mock.calls.find(([args]) => args?.where?.isDeleted === false && !args?.where?.status);
+    const firstRunCount = count.mock.calls.find(
+      ([args]) =>
+        args?.where?.isDeleted === false &&
+        args?.where?.projectId === "project-acme" &&
+        !args?.where?.status,
+    );
     expect(firstRunCount?.[0].where).toMatchObject({ tenantId: "tenant-acme", projectId: "project-acme" });
+  });
+
+  it("does not call a workspace-wide empty filter a first run", async () => {
+    // The active project is empty, but other projects in the workspace are not.
+    // ?project=all must count those, or the page hides the filters.
+    count.mockImplementation(async (args: { where?: { projectId?: unknown; OR?: unknown } }) => {
+      if (args?.where?.OR) return 0;
+      if (args?.where?.projectId) return 0;
+      return 4;
+    });
+    findMany.mockResolvedValue([]);
+    const html = await renderList({ project: "all", q: "nothing" });
+    expect(html).toContain("No issues match these filters.");
+    expect(html).not.toContain("No issues yet");
+    const firstRunCount = count.mock.calls.find(
+      ([args]) => args?.where?.isDeleted === false && !args?.where?.OR && !args?.where?.status,
+    );
+    expect(firstRunCount?.[0].where.projectId).toBeUndefined();
   });
 
   it("says no issues match when the project has issues but the filters hide them", async () => {
@@ -149,16 +172,41 @@ describe("issue list layout", () => {
     expect(listQuery.where.id).toEqual({ in: ["bug-1"] });
   });
 
-  it("is one centred column without the stats card (#1056)", async () => {
+  it("counts platform-tab badges and the Show-N-resolved link inside the stage filter (#626)", async () => {
+    await renderList({ stage: "reported" });
+
+    // The platform tabs group off the post-stage snapshot: their where-clause
+    // must carry the stage's row ids. (The status-tabs groupBy drops them on
+    // purpose, so assert existence, not exclusivity.)
+    const stagedGroupBy = groupBy.mock.calls.filter(
+      ([args]) => Array.isArray((args?.where as { id?: { in?: unknown[] } })?.id?.in),
+    );
+    expect(stagedGroupBy.length).toBeGreaterThan(0);
+    // The footer's "Show N resolved" link is gone (the Resolved tab covers it),
+    // so its staged count query is no longer made.
+  });
+
+  it("is one centred list column without the stats card (#1056)", async () => {
     const html = await renderList();
     expect(html).not.toContain("Total issues");
-    expect(html).toMatch(/^<div class="mx-auto w-full max-w-3xl /);
+    expect(html).toMatch(/^<div class="issues-page mx-auto w-full max-w-6xl space-y-5">/);
     // The four stats counts are no longer queried.
     const statusOnly = count.mock.calls.filter(([args]) => args?.where?.status === "in_progress");
     expect(statusOnly).toHaveLength(0);
   });
 
-  it("puts platform tabs above the list, with counts (#1055)", async () => {
+  it("keeps search and scope when switching status, and resets paging and intake", async () => {
+    const html = await renderList({ q: "login", platform: "cat-web", mine: "assigned", stage: "reported", page: "2" });
+    const nav = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(nav).toContain('href="/issues?q=login&amp;platform=cat-web&amp;mine=assigned&amp;status=in_progress"');
+    expect(nav).not.toContain("page=");
+    expect(nav).not.toContain("stage=");
+    const statusCount = groupBy.mock.calls.find(([args]) => args?.by?.[0] === "status");
+    expect(statusCount?.[0].where).toMatchObject({ tenantId: "tenant-acme", projectId: "project-acme", categoryId: "cat-web" });
+    expect(statusCount?.[0].where).not.toHaveProperty("status");
+  });
+
+  it("puts the platforms in a dropdown in the search/filter/sort row, with counts (#1055)", async () => {
     groupBy.mockResolvedValue([
       { categoryId: "cat-web", _count: { _all: 4 } },
       { categoryId: "cat-mobile", _count: { _all: 2 } },
@@ -166,34 +214,54 @@ describe("issue list layout", () => {
     ] as never);
     const html = await renderList({ platform: "cat-web", page: "2", q: "login" });
 
-    const nav = html.match(/<nav aria-label="Platforms"[\s\S]*?<\/nav>/)?.[0] ?? "";
-    const tabs = [...nav.matchAll(/<a [^>]*>(?:<svg[\s\S]*?<\/svg>)?([^<]+)<span[^>]*>(\d+)<\/span><\/a>/g)].map((m) => `${m[1].trim()} ${m[2]}`);
-    // Active platforms only (not the inactive Desktop), and Resolved tab with count.
-    expect(tabs).toEqual(["All 7", "Web 4", "Mobile 2", "Resolved 1"]);
+    // It sits with the other heading controls, not in the status tab row.
+    const heading = html.match(/<div class="issues-heading[\s\S]*?<div class="issues-tabs-row/)?.[0] ?? "";
+    expect(heading).toMatch(/<nav [^>]*aria-label="Platforms"/);
+    const tabsRow = html.match(/<div class="issues-tabs-row[\s\S]*?<\/nav><\/div>/)?.[0] ?? "";
+    expect(tabsRow).toContain('aria-label="Issue status"');
+    expect(tabsRow).not.toContain('aria-label="Platforms"');
+    // The trigger names the chosen platform; the list stays hidden until opened.
+    expect(heading).toMatch(/Platform: <span[^>]*>Web<\/span>/);
+    const nav = heading.match(/<nav [^>]*aria-label="Platforms"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(nav).toMatch(/<nav [^>]*aria-label="Platforms" hidden=""/);
+    const tabs = [...nav.matchAll(/<a [^>]*><span[^>]*>([^<]+)<\/span><span[^>]*>(\d+)<\/span><\/a>/g)].map((m) => `${m[1].trim()} ${m[2]}`);
+    // Active platforms only (not the inactive Desktop); no Resolved entry, the status tabs have it.
+    expect(tabs).toEqual(["All 7", "Web 4", "Mobile 2", "No platform 1"]);
     expect(nav).toMatch(/aria-current="page"[^>]*href="\/issues\?q=login&amp;platform=cat-web"/);
-    // Choosing a tab keeps the search, drops paging, and swaps the platform.
+    // Choosing a platform keeps the search, drops paging, and swaps the platform.
     expect(nav).toContain('href="/issues?q=login&amp;platform=cat-mobile"');
     expect(nav).toContain('href="/issues?q=login"');
-    expect(nav).toContain('href="/issues?q=login&amp;status=resolved"');
-    expect(nav).not.toContain("No platform");
+    expect(nav).toContain('href="/issues?q=login&amp;platform=none"');
+    expect(html).not.toContain('aria-label="Platforms" class="w-full');
 
     // The counts ignore the current platform, so every tab is honest.
-    const tabQuery = (groupBy.mock.calls as unknown as [{ where: Record<string, unknown> }][]).at(-1)![0];
+    const tabQuery = groupBy.mock.calls.find(([args]) => args.by[0] === "categoryId")![0];
     expect(tabQuery.where).not.toHaveProperty("categoryId");
     // The list itself is still narrowed to the chosen platform.
     expect(findMany.mock.calls.at(-1)![0].where.categoryId).toBe("cat-web");
   });
 
-  it("activates the Resolved tab when filtering by status=resolved (#473)", async () => {
+  it("keeps the Resolved status when a platform is chosen (#473)", async () => {
     groupBy.mockResolvedValue([
       { categoryId: "cat-web", _count: { _all: 4 } },
       { categoryId: "cat-mobile", _count: { _all: 2 } },
     ] as never);
     const html = await renderList({ status: "resolved" });
-    const nav = html.match(/<nav aria-label="Platforms"[\s\S]*?<\/nav>/)?.[0] ?? "";
-    expect(nav).toMatch(/aria-current="page"[^>]*href="\/issues\?status=resolved"/);
-    expect(nav).toContain('href="/issues"');
-    expect(nav).toContain('href="/issues?platform=cat-web"');
+    const status = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(status).toMatch(/aria-current="page" href="\/issues\?status=resolved"/);
+    const nav = html.match(/<nav [^>]*aria-label="Platforms"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(nav).toContain('href="/issues?status=resolved"');
+    expect(nav).toContain('href="/issues?status=resolved&amp;platform=cat-web"');
+  });
+
+  it("adds an Escalated tab after Closed that lists issues with an unanswered agent question", async () => {
+    count.mockResolvedValue(2 as never);
+    const html = await renderList({ status: "escalated" });
+    const status = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    const labels = [...status.matchAll(/<\/span>([A-Za-z ]+)<span class="issues-status-count">/g)].map((m) => m[1]);
+    expect(labels).toEqual(["All issues", "Open", "In progress", "Resolved", "Closed", "Escalated"]);
+    expect(status).toMatch(/aria-current="page" href="\/issues\?status=escalated"/);
+    expect(findMany.mock.calls.at(-1)![0].where.agentQuestions).toEqual({ some: { answeredAt: null } });
   });
 
   it("shows no tabs when the project has no platforms to choose between (#1055)", async () => {
@@ -204,21 +272,19 @@ describe("issue list layout", () => {
     expect(html).not.toContain('aria-label="Platforms"');
   });
 
-  it("hides resolved and closed issues by default, and says how many (#1058)", async () => {
-    count.mockImplementation(async (args: { where?: { status?: unknown } }) =>
-      JSON.stringify(args?.where?.status) === JSON.stringify({ in: ["resolved", "closed"] }) ? 4 : 1,
-    );
+  it("hides resolved and closed issues by default; the Resolved tab, not the footer, reaches them (#1058)", async () => {
     const html = await renderList({ q: "login", page: "3" });
     expect(findMany.mock.calls.at(-1)![0].where.status).toEqual({ in: ["open", "in_progress"] });
-    expect(html).toContain('href="/issues?q=login&amp;resolved=1"');
-    expect(html).toContain("Show 4 resolved");
+    expect(html).not.toContain("Show 4 resolved");
+    expect(html).not.toMatch(/Show \d+ resolved/);
+    const status = html.match(/<nav aria-label="Issue status"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(status).toContain('href="/issues?q=login&amp;status=resolved"');
   });
 
-  it("shows everything with ?resolved=1, and offers to hide them again (#1058)", async () => {
+  it("still shows everything with ?resolved=1, without a footer toggle (#1058)", async () => {
     const html = await renderList({ resolved: "1" });
     expect(findMany.mock.calls.at(-1)![0].where).not.toHaveProperty("status");
-    expect(html).toContain("Hide resolved");
-    expect(html).toContain('href="/issues"');
+    expect(html).not.toContain("Hide resolved");
   });
 
   it("lets an explicit status filter win over the default (#1058)", async () => {
@@ -253,5 +319,12 @@ describe("issue list layout", () => {
   it("dates rows by when they were opened when sorted by newest (#1061)", async () => {
     const html = await renderList({ sort: "newest" });
     expect(html).toMatch(/<time dateTime="2026-10-01T10:00:00.000Z" title="Opened /);
+  });
+
+  it("keeps the row unwatch action visible in the compact mobile layout", async () => {
+    const html = await renderList({ mine: "watching" });
+
+    expect(html).toContain('class="w-10 shrink-0 items-center justify-end gap-2 flex"');
+    expect(html).toMatch(/aria-label="Unwatch [^"]*Login button does nothing"/);
   });
 });

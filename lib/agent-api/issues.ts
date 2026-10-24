@@ -13,6 +13,7 @@ import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter"
 import { boundSearchTerm, escapeSearchQuery } from "@/lib/search";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
 import { intakeKind, openIssueStages, type IssueStage } from "@/lib/issue-stage";
+import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { parseIssueRef } from "@/lib/issue-ref";
 import { createIssueWithPolicy, cursorOrderBy, cursorWhere, decodeCursor, hashCreateRequest, pageSize, toPage, type IssueCursor } from "@/lib/agent-api/create-policy";
 import { createdSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
@@ -33,6 +34,16 @@ export class IssueApiError extends Error {
 
 const idSchema = z.string().trim().min(1).max(191);
 const stageSchema = z.enum(["reported", "confirmed", "ready"]);
+
+/** #406: name the bad query parameter instead of returning a pathless Zod dump. */
+function enumFilter<T extends string>(name: string, raw: string | null, allowed: readonly T[]): T | null {
+  if (!raw) return null;
+  if (!(allowed as readonly string[]).includes(raw)) {
+    throw new IssueApiError(400, `${name} must be one of ${allowed.join(", ")}.`);
+  }
+  return raw as T;
+}
+
 /** Files uploaded with POST /api/v1/attachments, linked on save (#645). */
 const attachmentIdsSchema = z.array(idSchema).max(MAX_ATTACHMENTS_PER_ITEM).optional();
 export const createSchema = createBugSchema.pick({ title: true, description: true, categoryId: true, areaId: true, proofLinks: true })
@@ -50,7 +61,9 @@ export async function agentIssueRequest(
   request: NextRequest, action: string, level: AgentLevel | "comment", target: string | null,
   run: (agent: AgentContext) => Promise<Response>,
   // `write` charges an observer-level route that changes data (#515) to the write budget.
-  options: { budget?: "none" | "write" } = {},
+  // `heartbeat` charges the claim-keeping-ping budget instead of write (#556), so an
+  // agent at its write cap can still heartbeat the claims it's actively working.
+  options: { budget?: "none" | "write" | "heartbeat" } = {},
 ): Promise<Response> {
   let agent: AgentContext | undefined;
   let response: Response | undefined;
@@ -62,9 +75,12 @@ export async function agentIssueRequest(
       // Retired or non-working routes must not spend the caller's budget (#554).
       response = await run(agent);
     } else {
+      const budgetKind = options.budget === "heartbeat"
+        ? "heartbeat"
+        : level === "observer" && options.budget !== "write" ? "read" : "write";
       const budget = await consumeAgentBudget(
         { id: agent.agentId, burst: agent.burst, burstUntil: agent.burstUntil ?? null },
-        level === "observer" && options.budget !== "write" ? "read" : "write",
+        budgetKind,
       );
       quota = budget;
       response = budget.allowed ? await run(agent) : agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
@@ -125,6 +141,14 @@ export const issueSelect = {
   id: true, number: true, title: true, description: true, status: true, severity: true,
   categoryId: true, typeId: true, reporterId: true, assigneeId: true, beneficiaryUserId: true,
   createdByAgentId: true, projectId: true, areaId: true, createdAt: true, updatedAt: true, proofLinks: true,
+  // #463: agents can see how close an idea is to the upvote gate.
+  voteCount: true,
+  // #544: whether a fix is linked, and at which commit. Without these a
+  // reviewer cannot tell a linked fix from an unlinked one, and `proofLinks`
+  // is misleading because it is free text set at create/edit, not the field
+  // the verdict and merge gates read.
+  pullRequestUrl: true,
+  pullRequestHeadSha: true,
   area: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.BugSelect;
 
@@ -141,11 +165,19 @@ export function requireKnownFilter(name: "platform" | "area", raw: string | null
 }
 
 export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
-  const status = params.get("status");
-  const severity = params.get("severity");
+  const status = enumFilter("status", params.get("status"), statusSchema.options);
+  const severity = enumFilter("severity", params.get("severity"), severitySchema.options);
   const assignee = params.get("assignee");
-  const stageRaw = params.get("stage");
-  const stage: IssueStage | null = stageRaw ? stageSchema.parse(stageRaw) : null;
+  const stage: IssueStage | null = enumFilter("stage", params.get("stage"), stageSchema.options);
+  let assigneeId: string | null | undefined;
+  if (assignee) {
+    if (assignee === "none") assigneeId = null;
+    else {
+      const parsed = idSchema.safeParse(assignee);
+      if (!parsed.success) throw new IssueApiError(400, 'assignee must be "none" or a valid user id.');
+      assigneeId = parsed.data;
+    }
+  }
   const platforms = await prisma.category.findMany({
     where: { tenantId: scope.tenantId },
     select: { id: true, name: true },
@@ -168,9 +200,9 @@ export async function listAgentIssues(scope: Scope, params: URLSearchParams) {
     : {};
   const filtered: Prisma.BugWhereInput = {
     ...scope, isDeleted: false, ...search,
-    ...(status ? { status: statusSchema.parse(status) } : {}),
-    ...(severity ? { severity: severitySchema.parse(severity) } : {}),
-    ...(assignee ? { assigneeId: assignee === "none" ? null : idSchema.parse(assignee) } : {}),
+    ...(status ? { status } : {}),
+    ...(severity ? { severity } : {}),
+    ...(assigneeId !== undefined ? { assigneeId } : {}),
     ...platformFilterWhere(requireKnownFilter("platform", params.get("platform"), parsePlatformFilter(params.get("platform"), platforms))),
     ...projectAreaFilterWhere(requireKnownFilter("area", requestedArea, parseProjectAreaFilter(requestedArea, areas))),
   };
@@ -218,11 +250,11 @@ export async function readAgentIssue(scope: Scope, id: string) {
   });
   if (!issue) throw new IssueApiError(404, "Issue not found.");
   const confirmed = await isConfirmed(issue.id);
-  const { voteCount, ...publicIssue } = issue;
   return {
-    ...publicIssue,
+    ...issue,
+    voteThreshold: WORK_READINESS_VOTE_THRESHOLD,
     confirmed,
-    intake: intakeKind({ status: issue.status, voteCount, confirmed }),
+    intake: intakeKind({ status: issue.status, voteCount: issue.voteCount, confirmed }),
   };
 }
 
@@ -440,14 +472,17 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
       bugId, actorId: agent.ownerId, type: "commented", summary: commentedSummary(body),
       metadata: { commentId: created.id, commentPreview: commentPreview(body) },
     } });
+    let attachedPrUrl: string | null = null;
     const attachment = pullRequestAttachment({
       authorId: agent.ownerId,
       assigneeId: bug.assigneeId,
       pullRequestUrl: bug.pullRequestUrl,
       proofLinks: bug.proofLinks ?? [],
       body,
+      type: input.type,
       metadata: input.metadata,
     });
+    if (attachment) attachedPrUrl = attachment.pullRequestUrl;
     await tx.bug.update({
       where: { id: bugId },
       data: {
@@ -473,14 +508,25 @@ export async function commentOnAgentIssue(agent: AgentContext, request: NextRequ
     await publish(tx, {
       tenantId: scope.tenantId,
       type: "comment.created",
-      payload: { commentId: created.id, issueId: bugId, authorId: agent.ownerId },
+      payload: {
+        commentId: created.id,
+        issueId: bugId,
+        authorId: agent.ownerId,
+        ...(attachment ? { linkedPullRequestUrl: attachment.pullRequestUrl } : {}),
+      },
       actorAgentId: agent.agentId,
       bugId,
     });
-    return created;
+    return { created, attachedPrUrl };
   });
-  notifyAgentComment(agent, bug, comment, parentAuthorId);
-  return NextResponse.json({ comment }, { status: 201 });
+  notifyAgentComment(agent, bug, comment.created, parentAuthorId);
+  return NextResponse.json(
+    {
+      comment: comment.created,
+      ...(comment.attachedPrUrl ? { linkedPullRequestUrl: comment.attachedPrUrl } : {}),
+    },
+    { status: 201 },
+  );
 }
 
 /**

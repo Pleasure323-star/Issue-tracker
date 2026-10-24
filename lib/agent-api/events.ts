@@ -128,11 +128,11 @@ export async function broadcastWhenCommitted(
   const attempts = options.attempts ?? COMMIT_WAIT_ATTEMPTS;
   const delayMs = options.delayMs ?? COMMIT_WAIT_DELAY_MS;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    let committed: unknown = null;
+    let committed: { id: string; projectId: string | null } | null = null;
     try {
       committed = await prisma.agentEvent.findUnique({
         where: { id: event.id },
-        select: { id: true },
+        select: { id: true, projectId: true },
       });
     } catch (error) {
       // The row cannot be read, so its visibility is unknown. Treat it as
@@ -145,7 +145,9 @@ export async function broadcastWhenCommitted(
       });
     }
     if (committed) {
-      broadcast(event);
+      // #607: the row carries the project the trigger derived from `bugId`.
+      // Without it the bus cannot enforce a project-scoped key's boundary.
+      broadcast({ ...event, projectId: committed.projectId ?? event.projectId ?? null });
       return true;
     }
     await waitMs(delayMs);
@@ -291,6 +293,26 @@ export function parseEventCursor(
   // Otherwise try to decode it as a cursor blob.
   const cursor = decodeEventCursor(after);
   return cursor ?? "invalid";
+}
+
+/**
+ * The 400 message for a cursor `parseEventCursor` called "invalid" (#465):
+ * names the parameter and the rule instead of a bare "Invalid cursor.".
+ */
+export function eventCursorError(params: URLSearchParams): string {
+  const after = params.get("after");
+  const afterId = params.get("afterId");
+  const isTimestamp = after !== null && z.iso.datetime({ offset: true }).safeParse(after).success;
+
+  if (!after && afterId !== null) return "afterId is only valid together with a timestamp after.";
+  if (afterId !== null) {
+    if (!isTimestamp) {
+      return "after must be an ISO-8601 timestamp with a time and offset (e.g. 2026-10-21T00:00:00.000Z) when afterId is set.";
+    }
+    return "afterId must be a non-empty event id of at most 191 characters.";
+  }
+  if (isTimestamp) return "afterId is required when after is a timestamp.";
+  return "Invalid cursor. Pass the cursor from a previous response, or an ISO timestamp in after together with afterId.";
 }
 
 // ---------------------------------------------------------------------------

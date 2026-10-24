@@ -99,9 +99,13 @@ async function approvalAgentId(db: Db, event: InboxEvent): Promise<string | null
         });
         if (matched?.actorAgentId) return matched.actorAgentId;
       }
+
+      // If an approvalId was explicitly provided and no requester matched this approval,
+      // do not fall back to another approval's request or an unlinked claim on the same issue.
+      return null;
     }
 
-    // 2. Issue fallback if no approvalId was supplied
+    // 2. Issue fallback only when no approvalId was supplied
     if (bugId) {
       const reqEvent = await (db as {
         agentEvent: { findFirst: (args: unknown) => Promise<{ actorAgentId: string | null } | null> };
@@ -118,8 +122,8 @@ async function approvalAgentId(db: Db, event: InboxEvent): Promise<string | null
     }
   }
 
-  // 3. Claim fallback for before_merge stage tied to active claim on this issue
-  if (bugId && typeof (db as { issueClaim?: { findFirst?: unknown } }).issueClaim?.findFirst === "function") {
+  // 3. Claim fallback only when no approvalId was supplied
+  if (!approvalId && bugId && typeof (db as { issueClaim?: { findFirst?: unknown } }).issueClaim?.findFirst === "function") {
     const claim = await (db as {
       issueClaim: { findFirst: (args: unknown) => Promise<{ agentId: string } | null> };
     }).issueClaim.findFirst({
@@ -164,6 +168,10 @@ export async function inboxRecipients(db: Db, event: InboxEvent): Promise<InboxD
       return agentId ? [{ agentId, kind: "offer" }] : [];
     }
     case "review.requested": {
+      const agentId = text(payload.agentId);
+      return agentId ? [{ agentId, kind: "offer" }] : [];
+    }
+    case "job.review.requested": {
       const agentId = text(payload.agentId);
       return agentId ? [{ agentId, kind: "offer" }] : [];
     }

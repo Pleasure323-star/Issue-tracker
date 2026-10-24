@@ -1,5 +1,4 @@
 import { headers } from "next/headers";
-import { ReportIssueFab } from "@/components/report-issue-fab";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
@@ -16,7 +15,10 @@ import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
+import { loadOwnAgents, loadSidebarCounts } from "@/lib/dashboard-overview";
 import { pointTotals } from "@/lib/points/leaderboard";
+import { getPlatformRewardConfig } from "@/lib/points/platform-rewards";
+import { TARGET_POINTS } from "@/lib/points/rules";
 
 export default async function AppLayout({
   children,
@@ -31,7 +33,7 @@ export default async function AppLayout({
     const ua = (await headers()).get("user-agent");
     if (isLinkPreviewBot(ua)) {
       return (
-        <div className="flex min-h-screen flex-col bg-slate-50">
+        <div className="flex min-h-screen flex-col bg-background">
           <main
             id={MAIN_CONTENT_ID}
             className={`${PAGE_CONTAINER_CLASS} flex-1 py-8`}
@@ -72,6 +74,14 @@ export default async function AppLayout({
   let pendingEscalationsCount = 0;
   let points = 0;
   let solvedTasks = 0;
+  let issueCount = 0;
+  let shellAgents: { id: string; name: string; level: string }[] = [];
+  let targetPoints = TARGET_POINTS;
+  try {
+    targetPoints = (await getPlatformRewardConfig(prisma)).target;
+  } catch (error) {
+    console.error("[layout] platform rewards failed", error);
+  }
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
@@ -84,6 +94,17 @@ export default async function AppLayout({
       solvedTasks = totals.solvedTasks;
     } catch (error) {
       console.error("[layout] points failed", error);
+    }
+    try {
+      issueCount = (await loadSidebarCounts({ userId: user.id, tenantId })).unresolved;
+    } catch (error) {
+      console.error("[layout] issue count failed", error);
+    }
+    try {
+      const agents = await loadOwnAgents({ userId: user.id, tenantId });
+      shellAgents = agents.map((agent) => ({ id: agent.id, name: agent.name, level: agent.level }));
+    } catch (error) {
+      console.error("[layout] agents failed", error);
     }
   }
 
@@ -100,38 +121,38 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-zk-bg">
       <SkipLink />
-      <AppHeader
-        userName={user.name ?? user.email}
-        userImage={user.image}
-        role={user.role}
-        isRealSuperAdmin={user.isRealSuperAdmin}
-        isRealAdmin={user.isRealAdmin}
-        unreadCount={unreadCount}
-        pendingEscalationsCount={pendingEscalationsCount}
-        userId={user.id}
-        workspaces={workspaces}
-        activeTenantId={activeTenantId}
-        points={points}
-        solvedTasks={solvedTasks}
-      />
-      <main
-        id={MAIN_CONTENT_ID}
-        /* Focusable so the skip link and the route announcer can move focus
-           here; -1 keeps it out of the normal tab order. */
-        tabIndex={-1}
-        className={`outline-none ${PAGE_CONTAINER_CLASS} flex-1 pt-5 sm:pt-8 ${
-          // #221: the fixed FAB sits over the bottom-right of the viewport and
-          // was covering pagination "Next" and the Danger-zone Delete button.
-          // Reserve clearance only when the FAB actually renders, so we don't
-          // leave dead space in deployments without REPORT_FORM_URL.
-          REPORT_FORM_URL ? "pb-20 sm:pb-24" : "pb-5 sm:pb-8"
-        }`}
-      >
-        {children}
-      </main>
-      <ReportIssueFab href={REPORT_FORM_URL} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <AppHeader
+          userName={user.name ?? user.email}
+          userImage={user.image}
+          role={user.role}
+          isRealSuperAdmin={user.isRealSuperAdmin}
+          isRealAdmin={user.isRealAdmin}
+          unreadCount={unreadCount}
+          pendingEscalationsCount={pendingEscalationsCount}
+          userId={user.id}
+          workspaces={workspaces}
+          activeTenantId={activeTenantId}
+          points={points}
+          solvedTasks={solvedTasks}
+          targetPoints={targetPoints}
+          agents={shellAgents}
+          reportFormUrl={REPORT_FORM_URL}
+          issueCount={issueCount}
+        />
+        <main
+          id={MAIN_CONTENT_ID}
+          /* Focusable so the skip link and the route announcer can move focus
+             here; -1 keeps it out of the normal tab order. */
+          tabIndex={-1}
+          // Below lg the bottom nav strip covers the last ~4.5rem of the screen.
+          className={`${PAGE_CONTAINER_CLASS} min-w-0 flex-1 overflow-x-clip py-6 outline-none max-lg:pb-28 max-sm:px-2 max-sm:pt-2.5 sm:px-6 sm:py-8 max-lg:sm:pb-28`}
+        >
+          {children}
+        </main>
+      </div>
       <FocusMainOnNavigate />
       <KeyboardShortcuts
         enabled={shortcutsEnabled}

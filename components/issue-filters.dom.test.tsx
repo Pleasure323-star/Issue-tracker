@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 
 const nav = vi.hoisted(() => ({
   params: new URLSearchParams(),
@@ -17,6 +17,61 @@ vi.mock("next/navigation", () => ({
 const fetchMock = vi.fn();
 
 import { IssueFilters } from "./issue-filters";
+
+describe("Issues compact toolbar", () => {
+  beforeEach(() => { nav.params = new URLSearchParams("q=login&platform=web&page=3"); nav.push.mockReset(); });
+  afterEach(cleanup);
+
+  it("opens and focuses the real search input", async () => {
+    render(<IssueFilters compact />);
+    fireEvent.click(screen.getByRole("button", { name: "Search issues" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Search" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Close search" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("collapses search with the cancel control without clearing the active query", async () => {
+    render(<IssueFilters compact />);
+    fireEvent.click(screen.getByRole("button", { name: "Search issues" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Search" })).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: "Close search" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Search issues" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Search issues" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("combobox", { name: "Search" })).toHaveValue("login");
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it("sorts through the existing URL navigation and retains active filters", () => {
+    render(<IssueFilters compact />);
+    fireEvent.click(screen.getByRole("button", { name: "Sort issues" }));
+    expect(screen.getByRole("radio", { name: "Top Votes" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "Newest" }));
+    expect(nav.push).toHaveBeenCalledWith("/issues?q=login&platform=web&sort=newest");
+    expect(screen.queryByRole("dialog", { name: "Sort options" })).not.toBeInTheDocument();
+  });
+
+  it("closes sort options with Escape and restores focus to the trigger", async () => {
+    render(<IssueFilters compact />);
+    fireEvent.click(screen.getByRole("button", { name: "Sort issues" }));
+    const selected = screen.getByRole("radio", { name: "Top Votes" });
+    await waitFor(() => expect(selected).toHaveFocus());
+    fireEvent.keyDown(selected, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Sort options" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort issues" })).toHaveFocus();
+  });
+
+  it("shows the selected filter chips and navigates when another option is selected", () => {
+    nav.params = new URLSearchParams("status=open&severity=high&page=3");
+    render(<IssueFilters compact />);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    expect(screen.queryByRole("radiogroup", { name: "Status" })).not.toBeInTheDocument();
+    const severity = screen.getByRole("radiogroup", { name: "Severity" });
+    expect(within(severity).getByRole("radio", { name: /^High$/ })).toBeChecked();
+    fireEvent.click(within(severity).getByRole("radio", { name: /^Critical$/ }));
+    expect(nav.push).toHaveBeenCalledWith("/issues?status=open&severity=critical");
+    fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
+  });
+});
 
 const tagTypes = [
   { id: "t1", name: "Design" },
@@ -207,7 +262,7 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
     render(<IssueFilters tagTypes={tagTypes} />);
     const filterBtn = screen.getByRole("button", { name: /^filter/i });
     expect(filterBtn).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
   });
 
   it("displays active filter count on the Filter button when filters are active", () => {
@@ -224,7 +279,7 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
 
     // Open popover
     fireEvent.click(filterBtn);
-    const dialog = screen.getByRole("dialog", { name: "Filter issues" });
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
     expect(dialog).toBeInTheDocument();
 
     // Select Status in popover
@@ -238,10 +293,10 @@ describe("IssueFilters unified Filter button popover (#762)", () => {
     const filterBtn = screen.getByRole("button", { name: /^filter/i });
 
     fireEvent.click(filterBtn);
-    expect(screen.getByRole("dialog", { name: "Filter issues" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Filters" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Filter issues" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
   });
 });
 
@@ -412,7 +467,7 @@ describe("IssueFilters stage filter (#1054)", () => {
   it("offers Ideas and Issues, with their counts, in the Filter popover", () => {
     render(<IssueFilters stageCounts={{ reported: 7, confirmed: 2, ready: 4 }} />);
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    const stage = within(screen.getByRole("dialog", { name: "Filter issues" })).getByLabelText("Kind");
+    const stage = within(screen.getByRole("dialog", { name: "Filters" })).getByLabelText("Kind");
     expect(within(stage).getByRole("option", { name: "Ideas (7)" })).toBeInTheDocument();
     expect(within(stage).getByRole("option", { name: "Ideas awaiting upvotes (2)" })).toBeInTheDocument();
     expect(within(stage).getByRole("option", { name: "Issues (4)" })).toBeInTheDocument();
@@ -446,7 +501,7 @@ describe("IssueFilters without a platform select (#1055)", () => {
     expect(screen.getByRole("button", { name: /^filter$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove platform filter" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    expect(within(screen.getByRole("dialog", { name: "Filter issues" })).queryByLabelText("Platform")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Filters" })).queryByLabelText("Platform")).not.toBeInTheDocument();
   });
 
   it("allows filtering by untagged platform when platforms are provided (#473)", () => {

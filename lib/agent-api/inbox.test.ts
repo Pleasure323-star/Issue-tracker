@@ -13,7 +13,7 @@ import { publish } from "./events";
 /** A transaction double with every table the inbox routing reads. */
 function tx(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    agentEvent: { create: vi.fn().mockResolvedValue({ id: "event-1" }), findFirst: vi.fn() },
+    agentEvent: { create: vi.fn().mockResolvedValue({ id: "event-1" }), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     webhookSubscription: { findMany: vi.fn().mockResolvedValue([]) },
     webhookDelivery: { createMany: vi.fn() },
     agentInboxItem: { createMany: vi.fn().mockImplementation(({ data }) => ({ count: data.length })) },
@@ -47,6 +47,39 @@ describe("inbox routing", () => {
     })] });
     expect(await run(tx(), { type: "review.requested", payload: { offerId: "o", agentId: "agent-carol" } }))
       .toEqual([{ agentId: "agent-carol", kind: "offer" }]);
+  });
+
+  it("delivers a job review offer with the context needed to accept it", async () => {
+    const event = {
+      id: "job-review-event",
+      tenantId: "tenant-a",
+      type: "job.review.requested",
+      payload: {
+        offerId: "job-review-offer",
+        jobId: "job-1",
+        submissionId: "submission-1",
+        agentId: "agent-carol",
+        beneficiaryUserId: "carol",
+        expiresAt: "2026-10-20T10:01:00.000Z",
+      },
+    } satisfies InboxEvent;
+
+    expect(await run(tx(), { type: event.type, payload: event.payload }))
+      .toEqual([{ agentId: "agent-carol", kind: "offer" }]);
+
+    const t = tx();
+    expect(await writeInbox(t as never, event)).toBe(1);
+    expect(t.agentInboxItem.createMany).toHaveBeenCalledWith({
+      skipDuplicates: true,
+      data: [expect.objectContaining({
+        agentId: "agent-carol",
+        kind: "offer",
+        eventId: "job-review-event",
+        eventType: "job.review.requested",
+        bugId: null,
+        payload: event.payload,
+      })],
+    });
   });
 
   it("puts a reply to an agent's comment in that agent's inbox", async () => {
@@ -116,6 +149,34 @@ describe("inbox routing", () => {
     expect(await run(t, { type: "approval.rejected", payload: { approvalId: "a", issueId: "bug-1", stage: "before_offer", actorUserId: "u" } }))
       .toEqual([{ agentId: "agent-bob", kind: "approval" }]);
     expect(await run(t, { type: "issue.updated", payload: {} })).toEqual([]);
+  });
+
+  it("does not deliver approval decision to unrelated agents when approvalId is unmatched (#513)", async () => {
+    const t = tx({
+      agentEvent: {
+        create: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([
+          { actorAgentId: "agent-alice", payload: { approvalId: "other-appr", issueId: "bug-1" } },
+        ]),
+      },
+      issueClaim: {
+        findUnique: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue({ agentId: "agent-bob" }),
+      },
+    });
+
+    expect(await run(t, {
+      type: "approval.granted",
+      payload: { approvalId: "unmatched-appr", issueId: "bug-1", stage: "before_offer", actorUserId: "u" },
+    })).toEqual([]);
+
+    expect(await run(t, {
+      type: "approval.rejected",
+      payload: { approvalId: "unmatched-appr", issueId: "bug-1", stage: "before_offer", actorUserId: "u" },
+    })).toEqual([]);
+
+    expect(t.issueClaim.findFirst).not.toHaveBeenCalled();
   });
 
   it("writes one item per agent and skips revoked or out-of-tenant agents", async () => {
