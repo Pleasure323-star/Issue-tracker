@@ -82,13 +82,43 @@ describe("WCAG 2.1 Color Contrast", () => {
     });
 
     it("applies 3:1 threshold for large text elements", () => {
-      // #64748b (slate-500) on #ffffff has ratio ~ 3.98:1.
-      // Below 4.5:1 (fails normal), but above 3.0:1 (passes large text).
-      const h1 = document.createElement("h1");
-      h1.className = "text-slate-500 bg-white";
-      h1.textContent = "Large Heading Text";
+      // #3b82f6 (blue-500) on #ffffff has ratio ~ 3.68:1.
+      // Below 4.5:1 (fails normal), but above 3.0:1 (passes large text >= 24px).
+      const container = document.createElement("div");
+      const heading = document.createElement("h1");
+      heading.className = "text-2xl text-blue-500 bg-white";
+      heading.textContent = "Large Heading Text";
+      container.appendChild(heading);
 
-      const mismatches = contrastMismatches(h1);
+      const mismatches = contrastMismatches(container);
+      expect(mismatches).toEqual([]);
+
+      // Verify the same color fails if normal size
+      const normalText = document.createElement("p");
+      normalText.className = "text-sm text-blue-500 bg-white";
+      normalText.textContent = "Small Text";
+      container.appendChild(normalText);
+
+      const normalMismatches = contrastMismatches(container);
+      expect(normalMismatches.length).toBe(1);
+      expect(normalMismatches[0].ratio).toBeLessThan(4.5);
+      expect(normalMismatches[0].expectedRatio).toBe(4.5);
+    });
+
+    it("skips transparent inline background to resolve ancestor background", () => {
+      const container = document.createElement("div");
+      container.className = "bg-slate-900";
+
+      const child = document.createElement("div");
+      child.style.backgroundColor = "transparent";
+
+      const text = document.createElement("p");
+      text.className = "text-white";
+      text.textContent = "Visible on dark ancestor";
+      child.appendChild(text);
+      container.appendChild(child);
+
+      const mismatches = contrastMismatches(container);
       expect(mismatches).toEqual([]);
     });
 

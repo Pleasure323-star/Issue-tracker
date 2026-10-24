@@ -159,14 +159,21 @@ function getBgColorClass(className: string): string | null {
 /**
  * Detects whether an element qualifies as "large text" under WCAG 2.1
  * (>= 18pt / ~24px, or >= 14pt / ~18.5px bold).
+ * Does not assume h1/h2 tags qualify without explicit styling.
  */
 export function isLargeText(el: HTMLElement, className = ""): boolean {
-  const tag = el.tagName.toLowerCase();
-  if (tag === "h1" || tag === "h2") return true;
-
   const tokens = new Set(className.split(/\s+/));
+  const tag = el.tagName.toLowerCase();
+
+  const isBold =
+    tag === "strong" ||
+    tag === "b" ||
+    tokens.has("font-bold") ||
+    tokens.has("font-extrabold") ||
+    tokens.has("font-black") ||
+    tokens.has("font-semibold");
+
   if (
-    tokens.has("text-xl") ||
     tokens.has("text-2xl") ||
     tokens.has("text-3xl") ||
     tokens.has("text-4xl") ||
@@ -176,27 +183,45 @@ export function isLargeText(el: HTMLElement, className = ""): boolean {
     return true;
   }
 
-  const isBold =
-    tag === "strong" ||
-    tokens.has("font-bold") ||
-    tokens.has("font-extrabold") ||
-    tokens.has("font-black") ||
-    tokens.has("font-semibold");
-
-  if (isBold && tokens.has("text-lg")) {
+  if (isBold && (tokens.has("text-xl") || tokens.has("text-lg"))) {
     return true;
   }
 
   const styleFontSize = el.style?.fontSize;
+  const styleFontWeight = el.style?.fontWeight;
+  const isInlineBold =
+    isBold ||
+    styleFontWeight === "bold" ||
+    styleFontWeight === "bolder" ||
+    parseInt(styleFontWeight || "0", 10) >= 600;
+
   if (styleFontSize) {
     const pxMatch = styleFontSize.match(/^([\d.]+)px$/);
     if (pxMatch) {
       const px = parseFloat(pxMatch[1]);
       if (px >= 24) return true;
-      if (px >= 18.5 && isBold) return true;
+      if (px >= 18.5 && isInlineBold) return true;
+    }
+    const ptMatch = styleFontSize.match(/^([\d.]+)pt$/);
+    if (ptMatch) {
+      const pt = parseFloat(ptMatch[1]);
+      if (pt >= 18) return true;
+      if (pt >= 14 && isInlineBold) return true;
     }
   }
 
+  return false;
+}
+
+/** Check if a color string denotes a fully transparent color. */
+export function isTransparent(color: string): boolean {
+  const trimmed = color.trim().toLowerCase();
+  if (trimmed === "transparent") return true;
+  const rgbaMatch = trimmed.match(/^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)$/);
+  if (rgbaMatch && parseFloat(rgbaMatch[1]) === 0) return true;
+  if (trimmed.startsWith("#") && trimmed.length === 9) {
+    return parseInt(trimmed.slice(7, 9), 16) === 0;
+  }
   return false;
 }
 
@@ -206,7 +231,10 @@ export function isLargeText(el: HTMLElement, className = ""): boolean {
  */
 export function contrastMismatches(root: ParentNode, defaultBg = "#ffffff"): ContrastMismatch[] {
   const mismatches: ContrastMismatch[] = [];
-  const elements = root.querySelectorAll<HTMLElement>("*");
+  const elements: HTMLElement[] = [
+    ...(root instanceof HTMLElement ? [root] : []),
+    ...Array.from(root.querySelectorAll<HTMLElement>("*")),
+  ];
 
   for (const el of elements) {
     // Only check elements with direct text content
@@ -220,13 +248,18 @@ export function contrastMismatches(root: ParentNode, defaultBg = "#ffffff"): Con
     const fgColor = inlineFg && parseColor(inlineFg) ? inlineFg : getTextColorClass(className);
     if (!fgColor) continue;
 
-    // Find closest ancestor with explicit bg or use default
+    // Find closest ancestor with explicit bg or use default, skipping transparent backgrounds
     let current: HTMLElement | null = el;
     let bgColor: string | null = null;
     while (current) {
       const inlineBg = current.style?.backgroundColor;
       const classBg = typeof current.className === "string" ? getBgColorClass(current.className) : null;
-      const bg = inlineBg && parseColor(inlineBg) ? inlineBg : classBg;
+      let bg: string | null = null;
+      if (inlineBg && !isTransparent(inlineBg) && parseColor(inlineBg)) {
+        bg = inlineBg;
+      } else if (classBg) {
+        bg = classBg;
+      }
       if (bg) {
         bgColor = bg;
         break;
