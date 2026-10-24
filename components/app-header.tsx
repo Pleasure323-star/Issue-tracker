@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
 import { SignOutButton } from "@/components/sign-out-button";
@@ -162,22 +161,6 @@ export function AppHeader({
     // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Brand: ziki logo */}
-        <Link
-          href="/dashboard"
-          aria-label="Ziki"
-          className="flex items-center gap-1"
-        >
-          <Image
-            src="/brand/ziki-logo-light.png"
-            alt="Ziki"
-            width={100}
-            height={28}
-            className="h-6 w-auto object-contain"
-            unoptimized
-          />
-        </Link>
-
         {/* Workspace switcher (light-themed pill with green dot). */}
         <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} light />
 

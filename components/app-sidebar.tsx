@@ -1,14 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BASE_PATH } from "@/lib/base-path";
 import { isNavItemActive } from "@/lib/header-nav";
-
-function asset(file: string) {
-  return BASE_PATH ? `${BASE_PATH}/brand/${file}` : `/brand/${file}`;
-}
 
 const railTile =
   "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint";
@@ -35,21 +29,6 @@ export function AppSidebar({
   return (
     // Phones: a slim icon strip above the top bar. From lg up: the 60 px rail.
     <aside className="flex w-full flex-row items-center gap-1 bg-zk-surface px-2 py-2 text-zk-text lg:sticky lg:top-0 lg:h-dvh lg:w-[60px] lg:shrink-0 lg:flex-col lg:gap-2 lg:py-4">
-      <Link
-        href="/dashboard"
-        aria-label="Ziki"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-tint"
-      >
-        <Image
-          src={asset("ziki-mark.png")}
-          alt=""
-          width={28}
-          height={28}
-          className="h-7 w-7 object-contain"
-          unoptimized
-          priority
-        />
-      </Link>
       <nav aria-label="Workspace" className="flex flex-row items-center gap-1 lg:flex-col lg:gap-1.5">
         <RailTile href="/dashboard" label="Overview" active={overview}>
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
