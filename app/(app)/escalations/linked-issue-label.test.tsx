@@ -85,6 +85,26 @@ describe("escalation linked issue label (#559)", () => {
     expect(findProposals.mock.calls[0][0].select.bug.select.number).toBe(true);
   });
 
+  it("links an approval row to its issue, not to a question page", async () => {
+    findMembership.mockResolvedValue({ role: "owner" });
+    findQuestions.mockResolvedValue([]);
+    findProposals.mockResolvedValue([]);
+    findApprovals.mockResolvedValue([
+      {
+        id: "a-1",
+        stage: "before_merge",
+        status: "pending",
+        createdAt: new Date("2026-10-21T10:00:00.000Z"),
+        bug: { id: "bug-3", number: 9, title: "Checkout fails" },
+      },
+    ]);
+
+    const html = renderToStaticMarkup(await EscalationsPage({ searchParams: Promise.resolve({}) })).replace(/<!-- -->/g, "");
+
+    expect(html).toContain('href="/issues/bug-3"');
+    expect(html).not.toContain('href="/escalations/a-1"');
+  });
+
   it("labels the associated issue on the detail page with #<number> <title>", async () => {
     ownerQuestion.mockResolvedValue(question);
 

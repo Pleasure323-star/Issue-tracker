@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { answerSchema, answerAgentQuestion } from "@/lib/agent-questions";
-import { decideRedesign } from "@/lib/redesigns";
+import { decideRedesign, redesignDecisionSchema } from "@/lib/redesigns";
 import { decideApproval } from "@/lib/approvals";
 import { IssueApiError } from "@/lib/agent-api/issues";
 
@@ -68,6 +69,9 @@ export async function quickResolveEscalationAction(
   return { ok: true };
 }
 
+const decisionTargetId = z.string().trim().min(1).max(191);
+const approvalDecision = z.enum(["approved", "rejected"]);
+
 export type DecideRedesignResult = { ok: true } | { ok: false; error: string };
 
 export async function decideRedesignAction(
@@ -78,8 +82,12 @@ export async function decideRedesignAction(
   const tenantId = await currentTenantIdFor(user.id);
   if (!tenantId) return { ok: false, error: "Workspace membership required." };
 
+  const id = decisionTargetId.safeParse(proposalId);
+  const parsed = redesignDecisionSchema.safeParse({ decision });
+  if (!id.success || !parsed.success) return { ok: false, error: "Invalid redesign decision." };
+
   try {
-    await decideRedesign(user.id, tenantId, proposalId, decision);
+    await decideRedesign(user.id, tenantId, id.data, parsed.data.decision);
   } catch (error) {
     if (error instanceof IssueApiError) return { ok: false, error: error.message };
     throw error;
@@ -99,8 +107,12 @@ export async function decideApprovalAction(
   const tenantId = await currentTenantIdFor(user.id);
   if (!tenantId) return { ok: false, error: "Workspace membership required." };
 
+  const id = decisionTargetId.safeParse(approvalId);
+  const parsed = approvalDecision.safeParse(decision);
+  if (!id.success || !parsed.success) return { ok: false, error: "Invalid approval decision." };
+
   try {
-    await decideApproval(user.id, tenantId, approvalId, decision);
+    await decideApproval(user.id, tenantId, id.data, parsed.data);
   } catch (error) {
     if (error instanceof IssueApiError) return { ok: false, error: error.message };
     throw error;
