@@ -2,22 +2,16 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
-import { AppHeader } from "@/components/app-header";
 import { AppSidebar } from "@/components/app-sidebar";
-import { getUnreadCount } from "@/lib/lookups";
-import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { isAdmin } from "@/lib/roles";
-import type { WorkspaceChoice } from "@/components/workspace-switcher";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
-import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
-import { loadOwnAgents, loadSidebarCounts } from "@/lib/dashboard-overview";
-import { pointTotals, tenantRankFor } from "@/lib/points/leaderboard";
+import { loadSidebarCounts } from "@/lib/dashboard-overview";
 
 export default async function AppLayout({
   children,
@@ -45,36 +39,15 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
-  // The header lists this person's workspaces. Pages still resolve the active
-  // project inside the current workspace, so a foreign project id is ignored.
-  let workspaces: WorkspaceChoice[] = [];
-  let activeTenantId: string | null = null;
+
+  let pendingEscalationsCount = 0;
+  let issueCount = 0;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
-    activeTenantId = tenantId;
-    const memberships = await tenantsForUser(prisma, user.id);
-    workspaces = memberships
-      .filter((tenant) => tenant.archivedAt === null)
-      .map((tenant) => ({ id: tenant.id, name: tenant.name, slug: tenant.slug }));
   } catch (error) {
-    console.error("[layout] workspace context failed", error);
+    console.error("[layout] tenant context failed", error);
   }
-  // A missing Notification table must not take down every signed-in page.
-  let unreadCount = 0;
-  try {
-    // Cached per user and expired by every write that changes it (#317), so
-    // ordinary navigation doesn't pay for a count query.
-    unreadCount = await getUnreadCount(user.id);
-  } catch (error) {
-    console.error("[layout] notification count failed", error);
-  }
-
-  let pendingEscalationsCount = 0;
-  let points = 0;
-  let rank: number | null = null;
-  let issueCount = 0;
-  let shellAgents: { id: string; name: string; level: string }[] = [];
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
@@ -82,26 +55,9 @@ export default async function AppLayout({
       console.error("[layout] pending escalations count failed", error);
     }
     try {
-      const totals = await pointTotals(prisma, tenantId, user.id);
-      points = totals.points;
-    } catch (error) {
-      console.error("[layout] points failed", error);
-    }
-    try {
-      rank = (await tenantRankFor(prisma, tenantId, user.id))?.rank ?? null;
-    } catch (error) {
-      console.error("[layout] rank failed", error);
-    }
-    try {
       issueCount = (await loadSidebarCounts({ userId: user.id, tenantId })).unresolved;
     } catch (error) {
       console.error("[layout] issue count failed", error);
-    }
-    try {
-      const agents = await loadOwnAgents({ userId: user.id, tenantId });
-      shellAgents = agents.map((agent) => ({ id: agent.id, name: agent.name, level: agent.level }));
-    } catch (error) {
-      console.error("[layout] agents failed", error);
     }
   }
 
@@ -125,21 +81,6 @@ export default async function AppLayout({
         pendingEscalationsCount={pendingEscalationsCount}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader
-          userName={user.name ?? user.email}
-          userImage={user.image}
-          role={user.role}
-          isRealSuperAdmin={user.isRealSuperAdmin}
-          isRealAdmin={user.isRealAdmin}
-          unreadCount={unreadCount}
-          userId={user.id}
-          workspaces={workspaces}
-          activeTenantId={activeTenantId}
-          points={points}
-          rank={rank}
-          agents={shellAgents}
-          reportFormUrl={REPORT_FORM_URL}
-        />
         <main
           id={MAIN_CONTENT_ID}
           /* Focusable so the skip link and the route announcer can move focus

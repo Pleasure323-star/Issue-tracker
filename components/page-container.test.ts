@@ -12,14 +12,11 @@ describe("page container token (#415)", () => {
     expect(PAGE_CONTAINER_CLASS).toContain("px-4");
   });
 
-  it("aligns the signed-in header and main, and keeps the preview on the shared width", () => {
+  it("aligns the signed-in shell and main, and keeps the preview on the shared width", () => {
     const layout = read("app/(app)/layout.tsx");
-    const header = read("components/app-header.tsx");
-    // The sidebar shell is full-bleed. Header and main share the same horizontal padding.
+    // The sidebar shell is full-bleed. Main shares the same horizontal padding.
     expect(layout).toContain("px-4 py-6");
-    expect(header).toContain("px-4");
     expect(layout).not.toContain("max-w-7xl");
-    expect(header).not.toContain("max-w-7xl");
     // Link-preview responses have no sidebar, so they still use the shared container.
     expect(layout).toContain("PAGE_CONTAINER_CLASS");
   });

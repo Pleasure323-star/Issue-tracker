@@ -16,11 +16,12 @@ describe("skip link (WCAG 2.4.1)", () => {
     expect(skip).toContain("focus:not-sr-only");
   });
 
-  it("is rendered before the header, so it is the first focusable element", () => {
+  it("is rendered before main, so it is the first focusable element", () => {
     const skipAt = layout.indexOf("<SkipLink />");
-    const headerAt = layout.indexOf("<AppHeader");
+    const mainAt = layout.indexOf("<main", skipAt);
     expect(skipAt).toBeGreaterThan(-1);
-    expect(skipAt).toBeLessThan(headerAt);
+    expect(mainAt).toBeGreaterThan(-1);
+    expect(skipAt).toBeLessThan(mainAt);
   });
 
   it("gives main an id and makes it focusable without adding a tab stop", () => {
