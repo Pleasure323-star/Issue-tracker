@@ -134,7 +134,7 @@ export function AppHeader({
 
   return (
     // Workspace top bar: 66 px high, near-white surface, subtle bottom divider.
-    // Left: brand + workspace switcher. Right: agents + notifications + account.
+    // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
         {/* Brand: ziki */}
@@ -154,77 +154,78 @@ export function AppHeader({
 
         {/* Workspace switcher (light-themed pill with green dot). */}
         <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} tone="chrome" />
-      </div>
 
-      <div className="ml-auto flex items-center gap-3 sm:gap-3 lg:shrink-0">
-        <AgentsMenu pathname={pathname} agents={agents} />
-        <NotificationsBell unreadCount={unreadCount} />
-        <div ref={accountRef} className="relative">
-          <button
-            ref={accountButtonRef}
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={accountOpen}
-            aria-controls="account-menu"
-            onClick={() => setAccountOpen((open) => !open)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
-          >
-            <span className="sr-only">Account menu for {userName}</span>
-            <Avatar name={userName} image={userImage} size="sm" variant="solid" />
-            <span className="truncate font-semibold text-zk-text">{userName}</span>
-            {points > 0 ? (
-              <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
-                {points} pts
-              </span>
-            ) : null}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
-            </svg>
-          </button>
-
-          {accountOpen ? (
-            <div
-              id="account-menu"
-              role="menu"
-              aria-label="Account"
-              className="absolute right-0 top-full mt-1 z-50 flex w-[300px] max-w-[calc(100vw-2rem)] origin-top flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)]"
+        {/* Spacer pushes agents/notifications/account to the right. */}
+        <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
+          <AgentsMenu pathname={pathname} agents={agents} />
+          <NotificationsBell unreadCount={unreadCount} />
+          <div ref={accountRef} className="relative">
+            <button
+              ref={accountButtonRef}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={accountOpen}
+              aria-controls="account-menu"
+              onClick={() => setAccountOpen((open) => !open)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
             >
-              <div className="flex items-center gap-3 rounded-[14px] bg-zk-tint p-3">
-                <Avatar name={userName} image={userImage} size="lg" variant="solid" />
-                <div className="min-w-0">
-                  <p className="truncate text-base font-extrabold text-zk-text">{userName}</p>
-                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="rounded-full bg-zk-surface px-2 py-0.5 font-bold text-zk-text2">
-                      {realRole === "user" ? "Member" : realRole === "admin" ? "Team lead (admin)" : "Super admin"}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              {canSwitchRole ? (
-                <div className="border-t border-zk-divider px-2 py-2.5">
-                  <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
-                </div>
+              <span className="sr-only">Account menu for {userName}</span>
+              <Avatar name={userName} image={userImage} size="sm" variant="solid" />
+              <span className="truncate font-semibold text-zk-text">{userName}</span>
+              {points > 0 ? (
+                <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
+                  {points} pts
+                </span>
               ) : null}
-              <AccountThemeSelector />
-              <div className="mx-2 h-px bg-zk-divider" />
-              <MenuLink href="/tenants" active={isNavItemActive(pathname, "/tenants")} label="Switch workspace">
-                {activeWorkspace ? (
-                  <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
-                    {activeWorkspace.name}
-                  </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+              </svg>
+            </button>
+
+            {accountOpen ? (
+              <div
+                id="account-menu"
+                role="menu"
+                aria-label="Account"
+                className="absolute right-0 top-full mt-1 z-50 flex w-[300px] max-w-[calc(100vw-2rem)] origin-top flex-col gap-1 rounded-[20px] border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)]"
+              >
+                <div className="flex items-center gap-3 rounded-[14px] bg-zk-tint p-3">
+                  <Avatar name={userName} image={userImage} size="lg" variant="solid" />
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-extrabold text-zk-text">{userName}</p>
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="rounded-full bg-zk-surface px-2 py-0.5 font-bold text-zk-text2">
+                        {realRole === "user" ? "Member" : realRole === "admin" ? "Team lead (admin)" : "Super admin"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                {canSwitchRole ? (
+                  <div className="border-t border-zk-divider px-2 py-2.5">
+                    <RoleSwitcher activeRole={effectiveRole} isSuperAdmin={isRealSuperAdmin} />
+                  </div>
                 ) : null}
-              </MenuLink>
-              <MenuLink href="/leaderboard" label="Leaderboard" />
-              {isAdmin(effectiveRole) ? <MenuLink href="/admin/dashboard" label="Dashboard" /> : null}
-              {isSuperAdmin(role) ? <MenuLink href="/admin/users" label="Admins" /> : null}
-              <MenuLink href="/settings/profile" label="Profile" />
-              <MenuLink href="/settings" label="Settings" />
-              <MenuLink href="/docs" label="Docs & /llms.txt" />
-              {reportFormUrl ? <MenuLink href={reportFormUrl} label="Report issue" /> : null}
-              <div className="mx-2 h-px bg-zk-divider" />
-              <SignOutButton userId={userId} className="font-bold text-zk-bad-fg hover:bg-zk-bad-soft" />
-            </div>
-          ) : null}
+                <AccountThemeSelector />
+                <div className="mx-2 h-px bg-zk-divider" />
+                <MenuLink href="/tenants" active={isNavItemActive(pathname, "/tenants")} label="Switch workspace">
+                  {activeWorkspace ? (
+                    <span className="rounded-full bg-zk-chip px-2 py-0.5 text-xs font-bold text-zk-text2">
+                      {activeWorkspace.name}
+                    </span>
+                  ) : null}
+                </MenuLink>
+                <MenuLink href="/leaderboard" label="Leaderboard" />
+                {isAdmin(effectiveRole) ? <MenuLink href="/admin/dashboard" label="Dashboard" /> : null}
+                {isSuperAdmin(role) ? <MenuLink href="/admin/users" label="Admins" /> : null}
+                <MenuLink href="/settings/profile" label="Profile" />
+                <MenuLink href="/settings" label="Settings" />
+                <MenuLink href="/docs" label="Docs & /llms.txt" />
+                {reportFormUrl ? <MenuLink href={reportFormUrl} label="Report issue" /> : null}
+                <div className="mx-2 h-px bg-zk-divider" />
+                <SignOutButton userId={userId} className="font-bold text-zk-bad-fg hover:bg-zk-bad-soft" />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>
