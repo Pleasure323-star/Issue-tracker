@@ -214,7 +214,7 @@ export function RedesignDecisionButtons({
         Reject
       </Button>
       {error ? (
-        <p className="text-xs text-red-700">{error}</p>
+        <p role="alert" className="text-xs text-zk-bad-fg">{error}</p>
       ) : null}
     </div>
   );
@@ -264,7 +264,7 @@ export function ApprovalDecisionButtons({
         Reject
       </Button>
       {error ? (
-        <p className="text-xs text-red-700">{error}</p>
+        <p role="alert" className="text-xs text-zk-bad-fg">{error}</p>
       ) : null}
     </div>
   );

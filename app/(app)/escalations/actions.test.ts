@@ -26,6 +26,8 @@ vi.mock("next/cache", () => ({
 
 import {
   answerEscalationAction,
+  decideApprovalAction,
+  decideRedesignAction,
   quickResolveEscalationAction,
 } from "./actions";
 
@@ -96,5 +98,29 @@ describe("answerEscalationAction (#763)", () => {
     const result = await answerEscalationAction(undefined, formData);
     expect(result).toEqual({ ok: false, error: "Write an answer before sending it." });
     expect(db.agentQuestion.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("decision actions validate their input", () => {
+  it("refuses a redesign decision outside approved, rejected, or chosen", async () => {
+    await expect(decideRedesignAction("r-1", "superseded" as never)).resolves.toEqual({
+      ok: false,
+      error: "Invalid redesign decision.",
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses an approval decision other than approved or rejected", async () => {
+    await expect(decideApprovalAction("a-1", "pending" as never)).resolves.toEqual({
+      ok: false,
+      error: "Invalid approval decision.",
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty id", async () => {
+    await expect(decideApprovalAction("  ", "approved")).resolves.toMatchObject({ ok: false });
+    await expect(decideRedesignAction("", "rejected")).resolves.toMatchObject({ ok: false });
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -30,7 +30,7 @@ type OwnerEscalation = {
   answeredAt?: Date | null;
   answer?: string | null;
   bug?: { id: string; number: number; title: string } | null;
-  href: string;
+  href: string | null;
 };
 
 export default async function EscalationsPage({
@@ -48,7 +48,14 @@ export default async function EscalationsPage({
 
   const rows: OwnerEscalation[] = escalations.map((item) => ({
     ...item,
-    href: item.source === "redesign" ? `/redesigns/${item.id}` : `/escalations/${item.id}`,
+    href:
+      item.source === "redesign"
+        ? `/redesigns/${item.id}`
+        : item.source === "approval"
+          ? item.bug
+            ? `/issues/${item.bug.id}`
+            : null
+          : `/escalations/${item.id}`,
   }));
 
   const pendingCount = rows.filter((q) => q.isWaiting).length;
@@ -141,9 +148,13 @@ export default async function EscalationsPage({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <EscalationTypeBadge type={item.escalationType} />
-                  <Link href={item.href} className="font-semibold text-zk-accent hover:underline">
-                    {item.source === "redesign" ? item.title : item.agentName}
-                  </Link>
+                  {item.href ? (
+                    <Link href={item.href} className="font-semibold text-zk-accent hover:underline">
+                      {item.source === "redesign" ? item.title : item.agentName}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-zk-text">{item.agentName}</span>
+                  )}
                   {item.source === "redesign" ? (
                     <span className="text-xs text-zk-muted">{item.agentName}</span>
                   ) : null}
@@ -180,7 +191,7 @@ export default async function EscalationsPage({
                   {item.source === "question" ? (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <QuickResolveButtons escalationId={item.id} />
-                      <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
+                      <Link href={`/escalations/${item.id}`} className="text-xs font-semibold text-zk-accent hover:underline">
                         Write custom response →
                       </Link>
                     </div>
@@ -193,7 +204,7 @@ export default async function EscalationsPage({
                   ) : item.source === "approval" ? (
                     <ApprovalDecisionButtons approvalId={item.id} />
                   ) : (
-                    <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
+                    <Link href={`/redesigns/${item.id}`} className="text-xs font-semibold text-zk-accent hover:underline">
                       Review proposal →
                     </Link>
                   )}
