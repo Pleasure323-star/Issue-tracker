@@ -26,6 +26,10 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
 
   const selected = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
+  if (!selected) {
+    return null;
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -224,11 +228,11 @@ export function AppHeader({
           className="flex items-center gap-1"
         >
           <Image
-            src="/brand/ziki-logo-light.png"
+            src="/ziki-logo.png"
             alt="Ziki"
-            width={28}
+            width={100}
             height={28}
-            className="h-6 w-6 object-contain"
+            className="h-6 w-auto object-contain"
             unoptimized
           />
         </Link>
