@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({
   agentQuestion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   membership: { findUnique: vi.fn() },
+  redesignProposal: { findMany: vi.fn() },
   bug: { findFirst: vi.fn() },
   issueClaim: { updateMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   $queryRaw: vi.fn(),
@@ -24,6 +25,7 @@ import {
   classifyEscalation,
   countPendingEscalations,
   listBugEscalations,
+  listOwnerPendingRedesigns,
   readAgentQuestion,
   type AskAgentQuestionInput,
 } from "./agent-questions";
@@ -47,6 +49,7 @@ beforeEach(() => {
   db.agentQuestion.findMany.mockResolvedValue([]);
   db.agentQuestion.updateMany.mockResolvedValue({ count: 1 });
   db.membership.findUnique.mockResolvedValue({ userId: "owner" });
+  db.redesignProposal.findMany.mockResolvedValue([]);
   db.bug.findFirst.mockResolvedValue({ id: "b1", title: "Header overlaps" });
   db.agentAuditEvent.create.mockResolvedValue({});
   db.agentEvent.create.mockResolvedValue({ id: "e1" });
@@ -273,6 +276,31 @@ describe("listBugEscalations (#763)", () => {
         where: { bugId: "b1", agent: { tenantId: "t1" } },
       }),
     );
+  });
+});
+
+describe("listOwnerPendingRedesigns", () => {
+  it.each([null, { role: "member" }])("omits decisions for an ineligible membership: %j", async (membership) => {
+    db.membership.findUnique.mockResolvedValue(membership);
+    await expect(listOwnerPendingRedesigns("person", "t1")).resolves.toEqual([]);
+    expect(db.redesignProposal.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "admin"])("shows a tenant %s only proposals from other owners", async (role) => {
+    db.membership.findUnique.mockResolvedValue({ role });
+    const historical = { id: "old", createdAt: new Date("2026-10-20"), status: "approved" };
+    const pending = { id: "new", createdAt: new Date("2026-10-21"), status: "proposed" };
+    db.redesignProposal.findMany.mockResolvedValueOnce([pending]).mockResolvedValueOnce([historical]);
+
+    await expect(listOwnerPendingRedesigns("person", "t1")).resolves.toEqual([pending, historical]);
+    expect(db.redesignProposal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { tenantId: "t1", authorAgent: { ownerUserId: { not: "person" } }, status: "proposed" },
+    }));
+    expect(db.redesignProposal.findMany.mock.calls[0][0]).not.toHaveProperty("take");
+    expect(db.redesignProposal.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { tenantId: "t1", authorAgent: { ownerUserId: { not: "person" } }, status: { in: ["approved", "rejected", "superseded"] } },
+      take: 100,
+    }));
   });
 });
 

@@ -262,8 +262,8 @@ export async function countPendingEscalations(userId: string, tenantId: string):
   });
 }
 
-/** Pending redesign proposals needing a decision, for the onBehalfOf user (#432).
- * Tenant admins see all proposals; non-admin beneficiaries see only their own.
+/** Redesign proposals for tenant admins eligible to decide them (#432).
+ * The proposing agent's owner cannot decide their proposals (see decideRedesign).
  * Derives isWaiting from status so decided items appear correctly in Pending,
  * Resolved, and All views. Proposed items are fetched without a limit; the
  * 100-item cap applies only to historical (decided) items.
@@ -273,12 +273,11 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
     where: { tenantId_userId: { tenantId, userId } },
     select: { role: true },
   });
-  if (!member) return [];
-  const isAdmin = isTenantAdminRole(member.role);
+  if (!member || !isTenantAdminRole(member.role)) return [];
 
   const baseWhere = {
     tenantId,
-    ...(isAdmin ? {} : { onBehalfOfUserId: userId }),
+    authorAgent: { ownerUserId: { not: userId } },
   };
 
   const [proposed, historical] = await Promise.all([

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { renderToStaticMarkup } from "react-dom/server";
 const db = vi.hoisted(() => ({
-  project: { findFirst: vi.fn() }, membership: { findUnique: vi.fn() }, bug: { findFirst: vi.fn() },
+  project: { findFirst: vi.fn() }, membership: { findUnique: vi.fn(), findFirst: vi.fn() }, bug: { findFirst: vi.fn() },
   redesignProposal: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   attachment: { updateMany: vi.fn() },
   agentApiKey: { findUnique: vi.fn() }, agentAuditEvent: { create: vi.fn() }, $transaction: vi.fn(),
@@ -32,6 +32,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   db.project.findFirst.mockResolvedValue({ id: "project" });
   db.membership.findUnique.mockResolvedValue({ userId: "human" });
+  db.membership.findFirst.mockResolvedValue({ userId: "human" });
   db.bug.findFirst.mockResolvedValue({ id: "issue" });
   db.redesignProposal.create.mockResolvedValue(proposal);
   db.redesignProposal.findFirst.mockResolvedValue(proposal);
@@ -49,6 +50,23 @@ beforeEach(() => {
 });
 
 describe("redesign proposal creation", () => {
+  it("defaults the beneficiary and notification to an independent tenant admin", async () => {
+    expect((await propose(request({ ...input, onBehalfOfUserId: undefined }, true))).status).toBe(201);
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: { tenantId: "tenant", role: { in: ["owner", "admin"] }, userId: { not: "owner" } },
+      select: { userId: true },
+    });
+    expect(db.redesignProposal.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ onBehalfOfUserId: "human" }),
+    });
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ onBehalfOfUserId: "human" }));
+  });
+  it("refuses to create a proposal when no independent admin can decide it", async () => {
+    db.membership.findFirst.mockResolvedValue(null);
+    expect((await propose(request(input, true))).status).toBe(422);
+    expect(db.redesignProposal.create).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
   it("records the agent and beneficiary, emits an event and notifies the person", async () => {
     expect((await propose(request(input, true))).status).toBe(201);
     expect(db.redesignProposal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ authorAgentId: "agent", onBehalfOfUserId: "beneficiary", tenantId: "tenant", status: "proposed" }) });
