@@ -112,14 +112,39 @@ describe("project-scoped keys on questions and escalations (#412)", () => {
 });
 
 describe("readAgentQuestion (#446)", () => {
-  it("returns the answer to the asking agent", async () => {
-    const row = { id: "q1", body: "?", answer: "Yes", answeredAt: new Date(), bugId: null, createdAt: new Date() };
+  it("returns the parsed answer to the asking agent", async () => {
+    const row = { id: "q1", body: "[blocker] Is X allowed?", answer: "Yes", answeredAt: new Date(), bugId: null, createdAt: new Date() };
     db.agentQuestion.findFirst.mockResolvedValue(row);
 
-    await expect(readAgentQuestion(agent, "q1")).resolves.toEqual(row);
+    await expect(readAgentQuestion(agent, "q1")).resolves.toEqual({
+      id: "q1",
+      bugId: null,
+      body: "Is X allowed?",
+      type: "blocker",
+      status: "resolved",
+      resolution: "Yes",
+      resolvedAt: row.answeredAt,
+      createdAt: row.createdAt,
+    });
     expect(db.agentQuestion.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "q1", agentId: "a1" } }),
     );
+  });
+
+  it("returns the parsed answer to the asking agent without type prefix", async () => {
+    const row = { id: "q2", body: "Plain question?", answer: null, answeredAt: null, bugId: null, createdAt: new Date() };
+    db.agentQuestion.findFirst.mockResolvedValue(row);
+
+    await expect(readAgentQuestion(agent, "q2")).resolves.toEqual({
+      id: "q2",
+      bugId: null,
+      body: "Plain question?",
+      type: "question",
+      status: "open",
+      resolution: null,
+      resolvedAt: null,
+      createdAt: row.createdAt,
+    });
   });
 
   it("hides a question that belongs to another agent", async () => {
@@ -280,25 +305,37 @@ describe("listBugEscalations (#763)", () => {
 });
 
 describe("listOwnerPendingRedesigns", () => {
-  it.each([null, { role: "member" }])("omits decisions for an ineligible membership: %j", async (membership) => {
-    db.membership.findUnique.mockResolvedValue(membership);
+  it("returns nothing for someone outside the workspace", async () => {
+    db.membership.findUnique.mockResolvedValue(null);
     await expect(listOwnerPendingRedesigns("person", "t1")).resolves.toEqual([]);
     expect(db.redesignProposal.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(["owner", "admin"])("shows a tenant %s only proposals from other owners", async (role) => {
+  it("shows a non-admin member only proposals raised on their behalf", async () => {
+    db.membership.findUnique.mockResolvedValue({ role: "member" });
+    const pending = { id: "mine", createdAt: new Date("2026-10-21"), status: "proposed" };
+    db.redesignProposal.findMany.mockResolvedValueOnce([pending]).mockResolvedValueOnce([]);
+
+    await expect(listOwnerPendingRedesigns("person", "t1")).resolves.toEqual([pending]);
+    expect(db.redesignProposal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { tenantId: "t1", OR: [{ onBehalfOfUserId: "person" }], status: "proposed" },
+    }));
+  });
+
+  it.each(["owner", "admin"])("shows a tenant %s proposals for them plus those from other owners", async (role) => {
     db.membership.findUnique.mockResolvedValue({ role });
     const historical = { id: "old", createdAt: new Date("2026-10-20"), status: "approved" };
     const pending = { id: "new", createdAt: new Date("2026-10-21"), status: "proposed" };
     db.redesignProposal.findMany.mockResolvedValueOnce([pending]).mockResolvedValueOnce([historical]);
 
+    const visible = [{ onBehalfOfUserId: "person" }, { authorAgent: { ownerUserId: { not: "person" } } }];
     await expect(listOwnerPendingRedesigns("person", "t1")).resolves.toEqual([pending, historical]);
     expect(db.redesignProposal.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: { tenantId: "t1", authorAgent: { ownerUserId: { not: "person" } }, status: "proposed" },
+      where: { tenantId: "t1", OR: visible, status: "proposed" },
     }));
     expect(db.redesignProposal.findMany.mock.calls[0][0]).not.toHaveProperty("take");
     expect(db.redesignProposal.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: { tenantId: "t1", authorAgent: { ownerUserId: { not: "person" } }, status: { in: ["approved", "rejected", "superseded"] } },
+      where: { tenantId: "t1", OR: visible, status: { in: ["approved", "rejected", "superseded"] } },
       take: 100,
     }));
   });

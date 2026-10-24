@@ -55,7 +55,7 @@ export type IssuedKey = { agentId: string; name: string; level: AgentLevel; rawK
 /** Inserts an agent and its first key. Shared by the settings page and pairing. */
 export async function insertAgentWithKey(
   db: Db,
-  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string },
+  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string; instructions?: string | null },
 ): Promise<IssuedKey> {
   const key = generateApiKey();
   const { projectId, ...agentInput } = input;
@@ -90,6 +90,9 @@ export async function createAgent(owner: Actor, input: unknown): Promise<CreateA
   const tenantId = await currentTenantIdFor(owner.id);
   if (!tenantId) {
     return { ok: false, error: "Join or create a team before you register agents." };
+  }
+  if (!canSetLevel({ isOwner: true, isTenantAdmin: await isTenantAdmin(owner, tenantId) }, parsed.data.level)) {
+    return { ok: false, error: "Only a team admin can assign dispatcher or merger roles.", field: "level" };
   }
   const project = await projectInTenant(tenantId, parsed.data.projectId);
   if (!project) return { ok: false, error: "Choose a project in this workspace.", field: "projectId" };
@@ -222,12 +225,12 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   if (!managed) return { ok: false, error: NOT_FOUND };
   if (managed.agent.revokedAt) return { ok: false, error: "That agent is revoked." };
   if (!canSetLevel(managed, level)) {
-    return { ok: false, error: "Only a team admin can make an agent a merger." };
+    return { ok: false, error: "Only a team admin can assign dispatcher or merger roles." };
   }
   const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { level: true } });
   if (before.level === level) return { ok: true };
   await prisma.$transaction(async (tx) => {
-    await tx.agent.update({ where: { id: agentId }, data: { level } });
+    await tx.agent.update({ where: { id: agentId }, data: { level, levelChangedAt: new Date() } });
     await audit(
       { agentId, tenantId: managed.agent.tenantId },
       "agent.level_changed",

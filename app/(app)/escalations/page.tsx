@@ -29,7 +29,7 @@ type OwnerEscalation = {
   createdAt: Date;
   answeredAt?: Date | null;
   answer?: string | null;
-  bug?: { id: string; title: string } | null;
+  bug?: { id: string; number: number; title: string } | null;
   href: string;
 };
 
@@ -46,7 +46,7 @@ export default async function EscalationsPage({
   const statusFilter = params.status ?? "waiting";
   const typeFilter = params.type ?? "all";
 
-  const rows = escalations.map((item) => ({
+  const rows: OwnerEscalation[] = escalations.map((item) => ({
     ...item,
     href: item.source === "redesign" ? `/redesigns/${item.id}` : `/escalations/${item.id}`,
   }));
@@ -71,39 +71,43 @@ export default async function EscalationsPage({
 
   const statusPill = (active: boolean) =>
     `inline-flex h-9 items-center rounded-full px-3.5 text-xs font-semibold transition-colors ${
-      active ? "bg-electric-blue-strong text-white" : "bg-zk-chip text-zk-text2 hover:bg-zk-tint"
+      active
+        ? "bg-electric-blue-strong text-white"
+        : "bg-zk-chip text-zk-text2 hover:bg-zk-tint"
     }`;
 
   const typePill = (active: boolean) =>
     `inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition-colors ${
-      active ? "bg-deep-ocean text-white" : "bg-zk-chip text-zk-muted hover:bg-zk-tint hover:text-zk-text"
+      active
+        ? "bg-deep-ocean text-white"
+        : "bg-zk-chip text-zk-muted hover:bg-zk-tint hover:text-zk-text"
     }`;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Agent Escalations</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl font-extrabold tracking-tight text-zk-text">Agent Escalations</h1>
+          <p className="mt-1 text-sm text-zk-muted">
             Incoming blockers, authorization requests, design decisions, and questions requiring human guidance.
           </p>
         </div>
         {pendingCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 border border-amber-200">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-zk-warn-bd bg-zk-warn-bg px-3 py-1 text-xs font-semibold text-zk-warn-fg">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-zk-warn-fg" />
             {pendingCount} waiting for resolution
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-zk-ok-bg px-3 py-1 text-xs font-semibold text-zk-ok-fg">
+            <span className="h-2 w-2 rounded-full bg-zk-ok-fg" />
             All escalations unblocked
           </span>
         )}
       </div>
 
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-slate-400">Status</span>
+      <div className="space-y-3 rounded-[20px] border border-zk-border bg-zk-surface p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zk-divider pb-3">
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">Status</span>
           <div className="flex flex-wrap items-center gap-1.5">
             <Link href={makeQuery("waiting", typeFilter)} className={statusPill(statusFilter === "waiting")}>
               Waiting ({pendingCount})
@@ -118,7 +122,7 @@ export default async function EscalationsPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="mr-2 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-400">Type</span>
+          <span className="mr-2 text-[11px] font-bold uppercase tracking-[0.06em] text-zk-accent">Type</span>
           <Link href={makeQuery(statusFilter, "all")} className={typePill(typeFilter === "all")}>
             All Types
           </Link>
@@ -131,55 +135,52 @@ export default async function EscalationsPage({
       </div>
 
       {filtered.length > 0 ? (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-zk-divider overflow-hidden rounded-[20px] border border-zk-border bg-zk-surface">
           {filtered.map((item) => (
             <li key={`${item.source}-${item.id}`} className="space-y-3 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <EscalationTypeBadge type={item.escalationType} />
-                  <Link href={item.href} className="font-medium text-teal-800 hover:underline">
+                  <Link href={item.href} className="font-semibold text-zk-accent hover:underline">
                     {item.source === "redesign" ? item.title : item.agentName}
                   </Link>
                   {item.source === "redesign" ? (
-                    <span className="text-xs text-slate-400">{item.agentName}</span>
+                    <span className="text-xs text-zk-muted">{item.agentName}</span>
                   ) : null}
-                  <span className="text-xs text-slate-400">•</span>
-                  <LocalTime date={item.createdAt} className="text-xs text-slate-500" />
+                  <span className="text-xs text-zk-muted">•</span>
+                  <LocalTime date={item.createdAt} className="text-xs text-zk-muted" />
                 </div>
                 {item.isWaiting ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                  <span className="inline-flex items-center rounded-full border border-zk-warn-bd bg-zk-warn-bg px-2.5 py-0.5 text-xs font-semibold text-zk-warn-fg">
                     Awaiting response
                   </span>
                 ) : (
-                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
+                  <span className="inline-flex items-center rounded-full bg-zk-ok-bg px-2.5 py-0.5 text-xs font-semibold text-zk-ok-fg">
                     Resolved
                   </span>
                 )}
               </div>
 
-              <p className="whitespace-pre-wrap text-sm text-slate-800">{item.body}</p>
+              <p className="whitespace-pre-wrap text-sm text-zk-text">{item.body}</p>
 
               {item.bug ? (
                 <div className="text-xs">
-                  <span className="text-slate-500">Linked Issue: </span>
+                  <span className="text-zk-muted">Linked Issue: </span>
                   <Link
                     href={`/issues/${item.bug.id}`}
-                    className="font-medium text-teal-700 hover:underline"
+                    className="font-semibold text-zk-accent hover:underline"
                   >
-                    #{item.bug.title}
+                    #{item.bug.number} {item.bug.title}
                   </Link>
                 </div>
               ) : null}
 
               {item.isWaiting ? (
-                <div className="border-t border-slate-100 pt-2">
+                <div className="border-t border-zk-divider pt-2">
                   {item.source === "question" ? (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <QuickResolveButtons escalationId={item.id} />
-                      <Link
-                        href={item.href}
-                        className="text-xs font-medium text-teal-700 hover:underline"
-                      >
+                      <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
                         Write custom response →
                       </Link>
                     </div>
@@ -187,14 +188,19 @@ export default async function EscalationsPage({
                     <RedesignDecisionButtons
                       proposalId={item.id}
                       bugId={item.bug?.id ?? null}
+                      authorized={item.authorized}
                     />
                   ) : item.source === "approval" ? (
                     <ApprovalDecisionButtons approvalId={item.id} />
-                  ) : null}
+                  ) : (
+                    <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
+                      Review proposal →
+                    </Link>
+                  )}
                 </div>
               ) : item.source === "question" ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50/40 p-3 text-xs text-slate-700 space-y-1">
-                  <span className="font-semibold text-slate-600">Your resolution:</span>
+                <div className="space-y-1 rounded-[12px] border border-zk-border bg-zk-chip/60 p-3 text-xs text-zk-text2">
+                  <span className="font-semibold text-zk-muted">Your resolution:</span>
                   <p className="whitespace-pre-wrap">{item.answer}</p>
                 </div>
               ) : null}
@@ -202,9 +208,9 @@ export default async function EscalationsPage({
           ))}
         </ul>
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-slate-700">No escalations match this filter.</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="rounded-[20px] border border-dashed border-zk-border bg-zk-surface p-8 text-center">
+          <p className="text-sm font-semibold text-zk-text">No escalations match this filter.</p>
+          <p className="mt-1 text-xs text-zk-muted">
             Agents, design proposals, and approval gates surface here.
           </p>
         </div>

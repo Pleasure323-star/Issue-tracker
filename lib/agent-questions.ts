@@ -140,15 +140,9 @@ export async function readAgentQuestion(agent: AgentContext, questionId: string)
     select: { id: true, body: true, answer: true, answeredAt: true, bugId: true, createdAt: true },
   });
   if (!question) throw new IssueApiError(404, "Question not found.");
-  return question;
-}
-
-export async function readAgentEscalation(agent: AgentContext, escalationId: string) {
-  const question = await readAgentQuestion(agent, escalationId);
   const parsed = parseEscalationBody(question.body);
   const typeSlug = escalationTypeToSlug(parsed.type);
   const status = getEscalationStatus(question.answeredAt, question.answer);
-
   return {
     id: question.id,
     bugId: question.bugId,
@@ -157,6 +151,20 @@ export async function readAgentEscalation(agent: AgentContext, escalationId: str
     status,
     resolution: question.answer,
     resolvedAt: question.answeredAt,
+    createdAt: question.createdAt,
+  };
+}
+
+export async function readAgentEscalation(agent: AgentContext, escalationId: string) {
+  const question = await readAgentQuestion(agent, escalationId);
+  return {
+    id: question.id,
+    bugId: question.bugId,
+    body: question.body,
+    type: question.type,
+    status: question.status,
+    resolution: question.resolution,
+    resolvedAt: question.resolvedAt,
     createdAt: question.createdAt,
   };
 }
@@ -246,7 +254,7 @@ export async function listOwnerQuestions(userId: string, tenantId: string) {
       bugId: true,
       createdAt: true,
       agent: { select: { id: true, name: true } },
-      bug: { select: { id: true, title: true } },
+      bug: { select: { id: true, number: true, title: true } },
     },
   });
 }
@@ -262,8 +270,9 @@ export async function countPendingEscalations(userId: string, tenantId: string):
   });
 }
 
-/** Redesign proposals for tenant admins eligible to decide them (#432).
- * The proposing agent's owner cannot decide their proposals (see decideRedesign).
+/** Redesign proposals visible to a user (#432): those raised on their behalf,
+ * plus, for tenant admins, those they are eligible to decide (the proposing
+ * agent's owner cannot decide their proposals; see decideRedesign).
  * Derives isWaiting from status so decided items appear correctly in Pending,
  * Resolved, and All views. Proposed items are fetched without a limit; the
  * 100-item cap applies only to historical (decided) items.
@@ -273,11 +282,14 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
     where: { tenantId_userId: { tenantId, userId } },
     select: { role: true },
   });
-  if (!member || !isTenantAdminRole(member.role)) return [];
+  if (!member) return [];
 
   const baseWhere = {
     tenantId,
-    authorAgent: { ownerUserId: { not: userId } },
+    OR: [
+      { onBehalfOfUserId: userId },
+      ...(isTenantAdminRole(member.role) ? [{ authorAgent: { ownerUserId: { not: userId } } }] : []),
+    ],
   };
 
   const [proposed, historical] = await Promise.all([
@@ -290,7 +302,8 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
         body: true,
         status: true,
         createdAt: true,
-        bug: { select: { id: true, title: true } },
+        onBehalfOfUserId: true,
+        bug: { select: { id: true, number: true, title: true } },
         authorAgent: { select: { id: true, name: true, ownerUserId: true } },
       },
     }),
@@ -304,7 +317,8 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
         body: true,
         status: true,
         createdAt: true,
-        bug: { select: { id: true, title: true } },
+        onBehalfOfUserId: true,
+        bug: { select: { id: true, number: true, title: true } },
         authorAgent: { select: { id: true, name: true, ownerUserId: true } },
       },
     }),
@@ -336,7 +350,7 @@ export async function listOwnerPendingApprovals(userId: string, tenantId: string
       stage: true,
       status: true,
       createdAt: true,
-      bug: { select: { id: true, title: true } },
+      bug: { select: { id: true, number: true, title: true } },
     },
   });
 }
@@ -370,7 +384,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
     createdAt: Date;
     answeredAt?: Date | null;
     answer?: string | null;
-    bug?: { id: string; title: string } | null;
+    bug?: { id: string; number: number; title: string } | null;
   }> = [];
 
   for (const q of questions) {
@@ -386,7 +400,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       createdAt: q.createdAt,
       answeredAt: q.answeredAt,
       answer: q.answer,
-      bug: q.bug ? { id: q.bug.id, title: q.bug.title } : null,
+      bug: q.bug ?? null,
     });
   }
 
@@ -398,11 +412,11 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       cleanBody: r.body,
       escalationType: "Scope Expansion",
       title: r.title,
-      authorized: isAdmin && userId !== (r.authorAgent as { ownerUserId?: string }).ownerUserId,
+      authorized: isAdmin && userId !== r.authorAgent.ownerUserId,
       isWaiting: r.status === "proposed",
       agentName: r.authorAgent.name,
       createdAt: r.createdAt,
-      bug: r.bug ? { id: r.bug.id, title: r.bug.title } : null,
+      bug: r.bug ?? null,
     });
   }
 
@@ -416,7 +430,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       isWaiting: true,
       agentName: "System",
       createdAt: a.createdAt,
-      bug: a.bug ? { id: a.bug.id, title: a.bug.title } : null,
+      bug: a.bug ?? null,
     });
   }
 
@@ -548,7 +562,7 @@ export async function ownerQuestion(userId: string, tenantId: string, questionId
       answeredAt: true,
       createdAt: true,
       agent: { select: { name: true } },
-      bug: { select: { id: true, title: true } },
+      bug: { select: { id: true, number: true, title: true } },
     },
   });
 }

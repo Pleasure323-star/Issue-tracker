@@ -7,16 +7,23 @@ import type { AgentContext } from "@/lib/agents/require-agent";
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { publish } from "@/lib/agent-api/events";
 import { isConfirmed } from "@/lib/agent-api/validation";
-import { award } from "@/lib/points/award";
+import { award, awardDispatcher } from "@/lib/points/award";
 import { pointSourceKey, reviewerPointsAt } from "@/lib/points/rules";
 import {
   calculateReviewerPoints,
   calculateSolverPoints,
-  getProjectRewardConfig,
 } from "@/lib/points/project-rewards";
+import { getProjectRewardConfig } from "@/lib/points/platform-rewards";
 import { assertRedesignOpen } from "@/lib/redesigns";
-import { statusChangedSummary } from "@/lib/activity-log";
+import { statusChangedSummary, commentedSummary, commentPreview } from "@/lib/activity-log";
 import { workflowFor } from "@/lib/workflow";
+import {
+  isPullRequestClosedUnmerged,
+  parseGitHubRepoUrl,
+  parsePullRequestUrl,
+  sameRepo,
+  type GitHubClient,
+} from "@/lib/github/merge-pr";
 
 /**
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
@@ -45,12 +52,14 @@ const mergeBugSelect = {
   reporterId: true,
   createdByAgentId: true,
   createdByAgent: { select: { ownerUserId: true } },
+  project: { select: { repoUrl: true, githubInstallationId: true } },
   claims: {
     select: {
       status: true,
       releasedAt: true,
       agentId: true,
       beneficiaryUserId: true,
+      dispatcherUserId: true,
       agent: { select: { ownerUserId: true } },
     },
   },
@@ -80,7 +89,15 @@ export type AcceptFixResult =
       message: string;
     };
 
-export async function acceptFix(agent: AgentContext, bugId: string): Promise<AcceptFixResult> {
+export type AcceptFixDeps = {
+  client?: GitHubClient;
+};
+
+export async function acceptFix(
+  agent: AgentContext,
+  bugId: string,
+  deps: AcceptFixDeps = {},
+): Promise<AcceptFixResult> {
   if (!hasLevel(agent.level, "merger")) {
     return { status: 403, error: "insufficient_level", message: "Only merger agents can accept a fix." };
   }
@@ -122,6 +139,32 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       error: "not_ready",
       missing: "pull_request",
       message: "This issue needs a linked pull request before its fix can be accepted.",
+    };
+  }
+
+  const ref = parsePullRequestUrl(bug.pullRequestUrl);
+  const repo = parseGitHubRepoUrl(bug.project?.repoUrl);
+  if (ref && repo && !sameRepo(ref, repo)) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "That pull request is not in this project's repository.",
+    };
+  }
+
+  // #642: a pull request closed without being merged cannot be accepted.
+  const isClosed = await isPullRequestClosedUnmerged(
+    bug.pullRequestUrl,
+    bug.project?.githubInstallationId,
+    deps.client,
+  );
+  if (isClosed) {
+    return {
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "That pull request is closed without being merged.",
     };
   }
   const reviewed: ReviewedBug = bug;
@@ -209,6 +252,31 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
       data: { status: "released", releasedAt: new Date(), releaseReason: "resolved" },
     });
 
+    // #458: a merger's acceptance is a decision other people read on the
+    // issue, not only an audit row — leave a plain comment saying it merged,
+    // the same way any other agent comment is recorded, so the thread itself
+    // shows the merge without anyone having to read the audit log.
+    const mergeCommentBody = "Fix accepted and merged by a merger agent.";
+    const mergeComment = await tx.comment.create({
+      data: {
+        bugId: bug.id,
+        authorId: agent.ownerId,
+        agentId: agent.agentId,
+        body: mergeCommentBody,
+        type: "comment",
+      },
+      select: { id: true },
+    });
+    await tx.bugActivity.create({
+      data: {
+        bugId: bug.id,
+        actorId: agent.ownerId,
+        type: "commented",
+        summary: commentedSummary(mergeCommentBody),
+        metadata: { commentId: mergeComment.id, commentPreview: commentPreview(mergeCommentBody) },
+      },
+    });
+
     // The solver: the person the active claim is for, else whoever it is
     // assigned to. The sourceKey makes a second accept, or the backfill
     // (#435), a no-op.
@@ -223,6 +291,7 @@ export async function acceptFix(agent: AgentContext, bugId: string): Promise<Acc
         sourceKey: pointSourceKey("solver", bug.id, solverUserId),
       });
     }
+    await awardDispatcher(tx, bug, claim.dispatcherUserId);
     const reviewerPoints = calculateReviewerPoints(rewardConfig);
     for (const [index, userId] of rewardedReviewerUserIds.entries()) {
       await award(tx, {

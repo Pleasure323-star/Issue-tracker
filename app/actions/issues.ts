@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateIssue } from "@/lib/revalidate-issue";
 import { fieldError, fromZodError } from "@/lib/form-errors";
 import { redirect } from "next/navigation";
 import {
@@ -21,6 +22,7 @@ import {
   type ActivityMetadata,
 } from "@/lib/activity-log";
 import { prisma } from "@/lib/prisma";
+import { readAgentResolution } from "@/lib/agent-resolution";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   resolveSessionUserId,
@@ -58,7 +60,6 @@ import {
 } from "@/lib/ticket-boosting";
 import { canAssignTicket, TICKET_ASSIGN_ERRORS } from "@/lib/ticket-assignment";
 import { canChangeTicketStatus, TICKET_TRIAGE_ERRORS } from "@/lib/ticket-triage";
-import { publish } from "@/lib/agent-api/events";
 import {
   canEditTicket,
   formatEditSummary,
@@ -94,13 +95,17 @@ import {
   ACTION_RATE_LIMITS,
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
+import { publish } from "@/lib/agent-api/events";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
+import { firstPullRequestLink, pullRequestAttachment } from "@/lib/github/pr-mention";
+import { isPullRequestClosedUnmerged, standingAcceptance } from "@/lib/github/merge-pr";
 import {
   agentMentionNames,
   agentOwnerIds,
   mentionedAgents,
   type MentionedAgent,
 } from "@/lib/agent-mentions";
+import { issuePath } from "@/lib/issue-ref";
 
 export type ActionResult = {
   error?: string;
@@ -390,14 +395,19 @@ export async function createBugAction(
     bugId: bug.id,
   });
 
-  // #600: agents hear about issues people file, not only ones agents file.
+  // #600 / #534: agents hear about issues people file, published once with complete payload.
   // The issue already exists, so a failed event mustn't fail the report.
   try {
     await publishWebEvent(prisma, {
       bugId: bug.id,
       type: "issue.created",
       actorUserId: userId,
-      payload: { reporterId: userId },
+      payload: {
+        reporterId: userId,
+        projectId,
+        beneficiaryUserId: userId,
+        isReport,
+      },
     });
   } catch (error) {
     console.error("[issues] issue.created event failed", error);
@@ -414,29 +424,9 @@ export async function createBugAction(
   }
   if (events.length > 0) notifyLater(...events);
 
-  // Notify agent platform on feed (#764)
-  try {
-    if (prisma.agentEvent) {
-      await publish(prisma, {
-        tenantId,
-        type: isReport ? "report.created" : "issue.created",
-        payload: {
-          issueId: bug.id,
-          projectId,
-          beneficiaryUserId: userId,
-          isReport,
-        },
-        bugId: bug.id,
-      });
-    }
-  } catch (err) {
-    // Non-fatal if agent events / webhooks are not configured in test environment
-    console.warn("[createBugAction] could not publish agent event", err);
-  }
-
   revalidatePath("/issues");
   revalidatePath("/bugs");
-  redirect(`/issues/${bug.id}`);
+  redirect(issuePath(bug.number));
 }
 
 /** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
@@ -458,6 +448,7 @@ export async function updateBugAction(
       area: { select: { id: true, name: true } },
       type: { select: { id: true, name: true } },
       milestone: { select: { id: true, title: true } },
+      project: { select: { githubInstallationId: true } },
     },
   });
   if (!existing || existing.isDeleted) {
@@ -554,7 +545,8 @@ export async function updateBugAction(
 
   // Claiming an issue doesn't also grant its status in the same request: a
   // normal user who isn't the assignee yet must assign themselves first
-  // (#218, #175).
+  // (#218, #175). Someone an admin already assigned can move the status
+  // from this page; that does not require an agent claim.
   if (
     !admin &&
     !isAssignee &&
@@ -564,14 +556,6 @@ export async function updateBugAction(
     return { error: TICKET_ASSIGN_ERRORS.statusNeedsAssignment };
   }
 
-  if (!admin && parsed.data.status && parsed.data.status !== existing.status) {
-    const claim = await prisma.issueClaim.findFirst({
-      where: { bugId: existing.id, beneficiaryUserId: userId, status: "active", releasedAt: null },
-      select: { id: true },
-    });
-    if (!claim) return { error: TICKET_ASSIGN_ERRORS.needsAgentClaim };
-  }
-
   // #316: an optional note, only for a change into resolved or closed.
   const parsedNote = parseResolutionNote(formData.get("resolutionNote"), {
     from: existing.status,
@@ -579,6 +563,21 @@ export async function updateBugAction(
   });
   if ("error" in parsedNote) return { error: parsedNote.error, field: "resolutionNote" };
   const resolutionNote = parsedNote.note;
+
+  // #642: a closed, unmerged pull request cannot resolve the issue.
+  if (
+    parsed.data.status === "resolved" &&
+    existing.status !== "resolved" &&
+    existing.pullRequestUrl
+  ) {
+    const isClosed = await isPullRequestClosedUnmerged(
+      existing.pullRequestUrl,
+      existing.project?.githubInstallationId,
+    );
+    if (isClosed) {
+      return { error: "The linked pull request is closed without being merged." };
+    }
+  }
 
   const data: {
     status?: typeof parsed.data.status;
@@ -841,6 +840,8 @@ export async function updateBugAction(
         await awardSolver(tx, {
           id: bugId,
           tenantId: existing.tenantId,
+          projectId: existing.projectId,
+          pullRequestUrl: existing.pullRequestUrl,
           severity: data.severity ?? existing.severity,
           assigneeId: data.assigneeId !== undefined ? data.assigneeId : existing.assigneeId,
         });
@@ -891,7 +892,7 @@ export async function updateBugAction(
   if (events.length > 0) notifyLater(...events);
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -921,6 +922,69 @@ export async function reopenBugAction(
   const formData = new FormData();
   formData.append("status", "open");
   return updateBugAction(bugId, formData);
+}
+
+/**
+ * Ziki #515: undo an agent's resolve in one click, back to the status the
+ * issue had before, while that resolve is still the latest status change.
+ *
+ * Authorized like any status change (assignee or admin, #202), but not routed
+ * through updateBugAction: that also wants a non-admin to hold an active
+ * claim, and the agent resolve released it (a person-assigned issue never had
+ * one), so the assignee could never undo it.
+ */
+export async function reopenAgentResolvedAction(bugId: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const access = await currentTenantAccess(user.id, user.role);
+  const tenantId = await currentTenantIdFor(user.id);
+  const existing = await prisma.bug.findUnique({
+    where: { id: bugId, ...bugInTenant(tenantId) },
+    select: { id: true, status: true, assigneeId: true, isDeleted: true },
+  });
+  if (!existing || existing.isDeleted) return { error: "Issue not found" };
+  if (
+    !canChangeTicketStatus({
+      actorId: user.id,
+      actorRole: user.role,
+      membershipRole: access.membershipRole,
+      currentAssigneeId: existing.assigneeId,
+    })
+  ) {
+    return { error: TICKET_TRIAGE_ERRORS.statusUnauthorized };
+  }
+
+  const latest = await prisma.bugActivity.findFirst({
+    where: { bugId, type: "status_changed" },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  const resolution = existing.status === "resolved" ? readAgentResolution(latest?.metadata) : null;
+  if (!resolution) return { error: "This issue wasn't resolved by an agent, so there is nothing to undo." };
+  const to = resolution.previousStatus;
+
+  const reopened = await prisma.$transaction(async (tx) => {
+    // Someone may have changed the status since the read above.
+    const changed = await tx.bug.updateMany({ where: { id: bugId, status: "resolved" }, data: { status: to } });
+    if (changed.count !== 1) return false;
+    await tx.bugActivity.create({
+      data: {
+        bugId,
+        actorId: user.id,
+        type: "status_changed",
+        summary: statusChangedSummary("resolved", to),
+        metadata: { field: "status", from: "resolved", to, via: "reopen_agent_resolve" },
+      },
+    });
+    await publishWebEvent(tx, { bugId, type: "issue.updated", actorUserId: user.id, payload: issueChangePayload({ status: to }) });
+    return true;
+  });
+  if (!reopened) return { error: "The issue's status changed meanwhile. Refresh and try again." };
+
+  revalidatePath("/issues");
+  revalidatePath(`/issues/${bugId}`);
+  revalidatePath("/bugs");
+  revalidatePath(`/bugs/${bugId}`);
+  return { ok: true };
 }
 
 /**
@@ -1117,7 +1181,7 @@ export async function editBugContentAction(
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1147,7 +1211,9 @@ export async function editProofLinksAction(
     select: {
       id: true,
       proofLinks: true,
+      pullRequestUrl: true,
       reporterId: true,
+      assigneeId: true,
       isDeleted: true,
     },
   });
@@ -1156,14 +1222,15 @@ export async function editProofLinksAction(
     return { error: TICKET_EDIT_ERRORS.notFound };
   }
 
-  if (
-    !canEditTicket({
+  const mayEditLinks =
+    existing.assigneeId === userId ||
+    canEditTicket({
       actorId: userId,
       actorRole: user.role,
       membershipRole: (await currentTenantAccess(userId, user.role)).membershipRole,
       reporterId: existing.reporterId,
-    })
-  ) {
+    });
+  if (!mayEditLinks) {
     return { error: TICKET_EDIT_ERRORS.unauthorized };
   }
 
@@ -1181,17 +1248,32 @@ export async function editProofLinksAction(
     return { ok: true };
   }
 
+  const accepted = await standingAcceptance(prisma, bugId);
+  const nextPullRequest = firstPullRequestLink(proofLinks);
+  if (accepted && existing.pullRequestUrl && nextPullRequest !== existing.pullRequestUrl) {
+    return {
+      error:
+        "This issue's accepted fix is bound to a different pull request — link the accepted one again.",
+    };
+  }
+
+  const updatePullRequest = !accepted && nextPullRequest !== existing.pullRequestUrl;
+
   await prisma.$transaction(async (tx) => {
     await tx.bug.update({
       where: { id: bugId },
-      data: { proofLinks, updatedAt: new Date() },
+      data: {
+        proofLinks,
+        updatedAt: new Date(),
+        ...(updatePullRequest ? { pullRequestUrl: nextPullRequest } : {}),
+      },
     });
 
     await publishWebEvent(tx, {
       bugId,
       type: "issue.updated",
       actorUserId: userId,
-      payload: issueChangePayload({ proofLinks }),
+      payload: issueChangePayload({ proofLinks, ...(updatePullRequest ? { pullRequestUrl: nextPullRequest } : {}) }),
     });
 
     await tx.bugActivity.create({
@@ -1207,10 +1289,24 @@ export async function editProofLinksAction(
         },
       },
     });
+
+    if (updatePullRequest) {
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: userId,
+          type: "edited",
+          summary: nextPullRequest
+            ? `linked PR ${nextPullRequest}`
+            : `unlinked PR ${existing.pullRequestUrl}`,
+          metadata: { field: "pullRequestUrl", pullRequestUrl: nextPullRequest, via: "proofLinks" },
+        },
+      });
+    }
   });
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1254,7 +1350,16 @@ export async function addCommentAction(
 
   const bug = await prisma.bug.findUnique({
     where: { id: bugId, ...bugInTenant(await currentTenantIdFor(userId)) },
-    select: { id: true, isDeleted: true, title: true, reporterId: true, assigneeId: true, tenantId: true },
+    select: {
+      id: true,
+      isDeleted: true,
+      title: true,
+      reporterId: true,
+      assigneeId: true,
+      tenantId: true,
+      pullRequestUrl: true,
+      proofLinks: true,
+    },
   });
   if (!bug || bug.isDeleted) {
     return { error: "Issue not found" };
@@ -1297,7 +1402,7 @@ export async function addCommentAction(
   const agents = await mentionedAgents(prisma, bug.tenantId, parsed.data.body);
   const normalizedBody = await normalizeMentionTags(parsed.data.body, bug.tenantId, agents);
 
-  const commentId = await prisma.$transaction(async (tx) => {
+  const { commentId, attachedPrUrl } = await prisma.$transaction(async (tx) => {
     const created = await tx.comment.create({
       data: {
         bugId,
@@ -1334,10 +1439,36 @@ export async function addCommentAction(
         } as Prisma.InputJsonValue,
       },
     });
+    let attachedPrUrl: string | null = null;
+    const attachment = pullRequestAttachment({
+      authorId: userId,
+      assigneeId: bug.assigneeId,
+      pullRequestUrl: bug.pullRequestUrl,
+      proofLinks: bug.proofLinks ?? [],
+      body: normalizedBody,
+      type: parsed.data.type,
+      metadata: parsed.data.metadata as Record<string, unknown> | undefined,
+    });
+    if (attachment) attachedPrUrl = attachment.pullRequestUrl;
     await tx.bug.update({
       where: { id: bugId },
-      data: { updatedAt: new Date() },
+      data: {
+        updatedAt: new Date(),
+        ...(attachment ? { pullRequestUrl: attachment.pullRequestUrl } : {}),
+        ...(attachment?.proofLinks ? { proofLinks: attachment.proofLinks } : {}),
+      },
     });
+    if (attachment) {
+      await tx.bugActivity.create({
+        data: {
+          bugId,
+          actorId: userId,
+          type: "edited",
+          summary: `linked PR ${attachment.pullRequestUrl}`,
+          metadata: { field: "pullRequestUrl", pullRequestUrl: attachment.pullRequestUrl, via: "comment" },
+        },
+      });
+    }
     // Commenting on an issue means you want to hear about replies (#216).
     await ensureWatching(tx, bugId, [userId]);
     // #600: a person's reply reaches the agents polling /api/v1/events.
@@ -1345,9 +1476,14 @@ export async function addCommentAction(
       bugId,
       type: "comment.created",
       actorUserId: userId,
-      payload: { commentId: created.id, parentId: parentId ?? null, authorId: userId },
+      payload: {
+        commentId: created.id,
+        parentId: parentId ?? null,
+        authorId: userId,
+        ...(attachment ? { linkedPullRequestUrl: attachment.pullRequestUrl } : {}),
+      },
     });
-    return created.id;
+    return { commentId: created.id, attachedPrUrl };
   });
 
   // A mentioned agent's owner hears about it like a mention of them (#603).
@@ -1378,10 +1514,10 @@ export async function addCommentAction(
   notifyLater(...events);
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
-  return { ok: true, commentId };
+  return { ok: true, commentId, ...(attachedPrUrl ? { linkedPullRequestUrl: attachedPrUrl } : {}) };
 }
 
 export type ToggleVoteResult = ActionResult & {
@@ -1484,7 +1620,7 @@ export async function toggleVoteAction(
   });
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, ...result };
@@ -1552,7 +1688,7 @@ export async function deleteBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   redirect("/issues");
@@ -1637,7 +1773,7 @@ export async function restoreBugAction(bugId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true };
@@ -1708,7 +1844,7 @@ export async function toggleBoostBugAction(
   }
 
   revalidatePath("/issues");
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/bugs");
   revalidatePath(`/bugs/${bugId}`);
   return { ok: true, isBoosted: nextBoosted };
@@ -1833,7 +1969,7 @@ export async function selfAssignBugAction(
     toUserId: targetAssigneeId,
   });
 
-  revalidatePath(`/issues/${bugId}`);
+  revalidateIssue(bugId);
   revalidatePath("/issues");
   revalidatePath(`/bugs/${bugId}`);
   revalidatePath("/bugs");

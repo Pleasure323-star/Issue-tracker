@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { award, awardSolver, solverAward } from "./award";
+
+const mergePr = vi.hoisted(() => ({
+  isPullRequestClosedUnmerged: vi.fn(async (url?: string | null) => url?.includes("closed") ?? false),
+}));
+vi.mock("@/lib/github/merge-pr", () => ({
+  isPullRequestClosedUnmerged: mergePr.isPullRequestClosedUnmerged,
+}));
+
+import { award, awardDispatcher, awardSolver, solverAward } from "./award";
 
 /** An in-memory ledger with the unique `sourceKey` the database enforces. */
 function fakeLedger() {
@@ -19,6 +27,23 @@ function fakeLedger() {
 const issue = { id: "bug-1", tenantId: "tenant-zedu", severity: "high" as const, assigneeId: "user-1" };
 
 describe("points ledger (#428)", () => {
+  it("pays the dispatcher 2 points only once per completed issue, including reassignment", async () => {
+    const { db, rows } = fakeLedger();
+    expect(await awardDispatcher(db, { id: "bug-1", tenantId: "tenant-zedu" }, "dispatcher-owner")).toBe(true);
+    expect(await awardDispatcher(db, { id: "bug-1", tenantId: "tenant-zedu" }, "dispatcher-owner")).toBe(false);
+    expect(await awardDispatcher(db, { id: "bug-1", tenantId: "tenant-zedu" }, "another-owner")).toBe(false);
+    expect(rows).toEqual([{
+      tenantId: "tenant-zedu", bugId: "bug-1", userId: "dispatcher-owner",
+      role: "dispatcher", points: 2, sourceKey: "dispatcher:bug-1",
+    }]);
+  });
+
+  it("does not pay a dispatcher for unattributed work", async () => {
+    const { db, rows } = fakeLedger();
+    expect(await awardDispatcher(db, issue, null)).toBe(false);
+    expect(rows).toEqual([]);
+  });
+
   it("builds the solver award from severity and assignee", () => {
     expect(solverAward(issue)).toEqual({
       tenantId: "tenant-zedu",
@@ -56,5 +81,15 @@ describe("points ledger (#428)", () => {
     const { db, createMany } = fakeLedger();
     await award(db, { tenantId: "t", userId: "u", bugId: null, role: "reporter", points: 5, sourceKey: "reporter:b:u" });
     expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+  });
+
+  it("does not award solver points when the linked pull request is closed without being merged (#642)", async () => {
+    const { db, rows } = fakeLedger();
+    const result = await awardSolver(db, {
+      ...issue,
+      pullRequestUrl: "https://github.com/zedu/web/pull/closed-1",
+    });
+    expect(result).toBe(false);
+    expect(rows).toEqual([]);
   });
 });
