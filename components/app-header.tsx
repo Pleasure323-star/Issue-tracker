@@ -2,8 +2,9 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { WorkspaceSwitcher, type WorkspaceChoice } from "@/components/workspace-switcher";
+import type { WorkspaceChoice } from "@/components/workspace-switcher";
 import { SignOutButton } from "@/components/sign-out-button";
 import { RoleSwitcher } from "@/components/role-switcher";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
@@ -16,6 +17,61 @@ export type ShellAgent = {
   name: string;
   level: string;
 };
+
+/** Workspace dropdown button (matches AgentsMenu styling). */
+function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceChoice[]; activeTenantId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const selected = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+      >
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text">
+          {selected.name.charAt(0).toUpperCase()}
+        </span>
+        <span className="truncate font-semibold text-zk-text">{selected.name}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-50 flex w-[260px] flex-col gap-0.5 rounded-xl border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)]"
+        >
+          {workspaces.map((workspace) => {
+            const current = workspace.id === selected.id;
+            return (
+              <Link
+                key={workspace.id}
+                href="/tenants"
+                onClick={() => setOpen(false)}
+                className={`flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 text-left ${current ? "bg-zk-tint text-zk-accent font-semibold" : "text-zk-text hover:bg-zk-chip hover:text-zk-text"}`}
+              >
+                <span className={`flex h-[30px] w-[30px] items-center justify-center rounded-full ${current ? "bg-zk-tint" : "bg-zk-surface"} text-xs font-extrabold ${current ? "text-zk-accent" : "text-zk-text"}`}>
+                  {workspace.name.charAt(0).toUpperCase()}
+                </span>
+                <span className={`min-w-0 flex-1 truncate ${current ? "font-semibold text-zk-accent" : "font-medium text-zk-text"}`}>
+                  {workspace.name}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /** Agents dropdown button (matches artifact: "Agents ▼" pill). */
 function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: ShellAgent[] }) {
@@ -161,8 +217,24 @@ export function AppHeader({
     // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Workspace switcher (light-themed pill with green dot). */}
-        <WorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} light />
+        {/* Brand: ziki logo mark */}
+        <Link
+          href="/dashboard"
+          aria-label="Ziki"
+          className="flex items-center gap-1"
+        >
+          <Image
+            src="/brand/ziki-logo-light.png"
+            alt="Ziki"
+            width={28}
+            height={28}
+            className="h-6 w-6 object-contain"
+            unoptimized
+          />
+        </Link>
+
+        {/* Workspace dropdown (matches AgentsMenu styling). */}
+        <WorkspaceMenu workspaces={workspaces} activeTenantId={activeTenantId} />
 
         {/* Spacer pushes agents/notifications/account to the right. */}
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
