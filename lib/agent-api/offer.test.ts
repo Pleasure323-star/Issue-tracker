@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { availableOfferCandidates, isOfferExpired, OFFER_TTL_MS } from "@/lib/agent-api/offer";
 
 describe("ticket offers", () => {
-  it("expires an offer at 60 seconds, but not before", () => {
+  it("expires an offer at 10 minutes, but not before", () => {
     const offeredAt = new Date("2026-10-19T12:00:00.000Z");
     const start = offeredAt.getTime();
     expect(isOfferExpired(offeredAt, start + OFFER_TTL_MS - 1)).toBe(false);
@@ -91,8 +91,8 @@ describe("ticket offers", () => {
 
     vi.spyOn(prisma.projectWorkflow, "findUnique").mockResolvedValue(null);
     const findManySpy = vi.spyOn(prisma.issueClaim, "findMany").mockResolvedValueOnce([
-      { id: "claim-1", offeredAt: new Date(Date.now() - 100_000), bug: { projectId: "proj-1" } } as never,
-      { id: "claim-2", offeredAt: new Date(Date.now() - 100_000), bug: { projectId: "proj-1" } } as never,
+      { id: "claim-1", offeredAt: new Date(Date.now() - 700_000), bug: { projectId: "proj-1" } } as never,
+      { id: "claim-2", offeredAt: new Date(Date.now() - 700_000), bug: { projectId: "proj-1" } } as never,
     ]);
     const txMock = {
       issueClaim: {
@@ -100,7 +100,7 @@ describe("ticket offers", () => {
           id: "claim-1",
           bugId: "bug-1",
           status: "offered",
-          offeredAt: new Date(Date.now() - 100_000),
+          offeredAt: new Date(Date.now() - 700_000),
           releasedAt: null,
           agentId: "agent-1",
           beneficiaryUserId: "user-1",
