@@ -19,6 +19,7 @@ export function EscalationTypeBadge({ type }: { type: EscalationType | string })
     "Scope Expansion": "bg-zk-warn-bg text-zk-warn-fg border-zk-warn-bd",
     Question: "bg-zk-chip text-zk-text2 border-zk-border",
     Redesign: "bg-zk-info-bg text-zk-info-fg border-zk-border",
+    Approval: "bg-purple-50 text-purple-800 border-purple-200",
   };
 
   const icons: Record<string, string> = {
@@ -28,6 +29,7 @@ export function EscalationTypeBadge({ type }: { type: EscalationType | string })
     "Scope Expansion": "⚠️",
     Question: "❓",
     Redesign: "✎",
+    Approval: "✅",
   };
 
   const badgeStyle = styles[type] ?? styles.Question;
@@ -149,5 +151,60 @@ export function EscalationAnswerForm({
         </span>
       </div>
     </form>
+  );
+}
+
+
+/**
+ * Quick approve/reject buttons for IssueApproval rows shown in Escalations (#432).
+ */
+export function ApprovalDecideButtons({
+  approvalId,
+}: {
+  approvalId: string;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDecide = (decision: "approved" | "rejected") => {
+    setError(null);
+    startTransition(async () => {
+      const res = await decideApprovalAction(approvalId, decision);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          disabled={isPending}
+          onClick={() => handleDecide("approved")}
+          className="rounded-full bg-zk-ok-fg px-3.5 py-2 text-xs font-semibold text-white hover:opacity-90 focus-visible:ring-zk-ok-fg"
+        >
+          {isPending ? "Saving…" : "✓ Approve"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={isPending}
+          onClick={() => handleDecide("rejected")}
+          className="rounded-full border border-zk-border bg-zk-surface px-3.5 py-2 text-xs font-semibold text-zk-text hover:bg-zk-chip"
+        >
+          Reject
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-zk-bad-fg">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -3,18 +3,20 @@ import { requireUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { listOwnerQuestions, parseEscalationBody, type EscalationType } from "@/lib/agent-questions";
+import { listPendingApprovals } from "@/lib/approvals";
 import { LocalTime } from "@/components/local-time";
-import { EscalationTypeBadge, QuickResolveButtons } from "./escalation-controls";
+import { EscalationTypeBadge, QuickResolveButtons, ApprovalDecideButtons } from "./escalation-controls";
 
 export const metadata = { title: "Agent Escalations" };
 
-const ALL_TYPES: Array<EscalationType | "Redesign"> = [
+const ALL_TYPES: Array<EscalationType | "Redesign" | "Approval"> = [
   "Blocker",
   "Work Authorization",
   "Question",
   "Scope Expansion",
   "Human Approval",
   "Redesign",
+  "Approval",
 ];
 
 export default async function EscalationsPage({
@@ -42,6 +44,9 @@ export default async function EscalationsPage({
       })
     : [];
 
+  // #432 — pull pending workflow approvals into the unified Escalations queue
+  const pendingApprovals = tenantId ? await listPendingApprovals(tenantId) : [];
+
   const params = searchParams ? await searchParams : {};
   const statusFilter = params.status ?? "waiting";
   const typeFilter = params.type ?? "all";
@@ -62,6 +67,7 @@ export default async function EscalationsPage({
       href: `/escalations/${q.id}`,
     };
   });
+
   const redesignRows = proposals.map((proposal) => ({
     id: proposal.id,
     kind: "redesign" as const,
@@ -75,7 +81,34 @@ export default async function EscalationsPage({
     bug: proposal.bug,
     href: `/redesigns/${proposal.id}`,
   }));
-  const rows = [...questionRows, ...redesignRows].sort(
+
+  // #432 — IssueApproval rows: each is a workflow gate awaiting human decision
+  const approvalRows = pendingApprovals.map((approval) => {
+    const stageCopy =
+      approval.stage === "before_merge"
+        ? "Approval required before PR can be merged."
+        : "Approval required before this issue can be offered to agents.";
+    const ruleReasons: string[] = [];
+    if (approval.rule?.issueType?.name) ruleReasons.push(`type: ${approval.rule.issueType.name}`);
+    if (approval.rule?.severity) ruleReasons.push(`severity: ${approval.rule.severity}`);
+    if (approval.rule?.fileGlob) ruleReasons.push(`files: ${approval.rule.fileGlob}`);
+    const body = ruleReasons.length ? `${stageCopy} (${ruleReasons.join(", ")})` : stageCopy;
+    return {
+      id: approval.id,
+      kind: "approval" as const,
+      escalationType: "Approval" as const,
+      title: approval.bug.title,
+      body,
+      createdAt: approval.createdAt,
+      isWaiting: true,
+      agentName: "Workflow",
+      answer: null,
+      bug: approval.bug,
+      href: `/issues/${approval.bug.id}`,
+    };
+  });
+
+  const rows = [...questionRows, ...redesignRows, ...approvalRows].sort(
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
   );
 
@@ -169,7 +202,7 @@ export default async function EscalationsPage({
                 <div className="flex flex-wrap items-center gap-2">
                   <EscalationTypeBadge type={item.escalationType} />
                   <Link href={item.href} className="font-semibold text-zk-accent hover:underline">
-                    {item.kind === "redesign" ? item.title : item.agentName}
+                    {item.kind === "redesign" || item.kind === "approval" ? item.title : item.agentName}
                   </Link>
                   {item.kind === "redesign" ? (
                     <span className="text-xs text-zk-muted">{item.agentName}</span>
@@ -207,6 +240,13 @@ export default async function EscalationsPage({
                   <QuickResolveButtons escalationId={item.id} />
                   <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
                     Write custom response →
+                  </Link>
+                </div>
+              ) : item.isWaiting && item.kind === "approval" ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zk-divider pt-2">
+                  <ApprovalDecideButtons approvalId={item.id} />
+                  <Link href={item.href} className="text-xs font-semibold text-zk-accent hover:underline">
+                    View issue →
                   </Link>
                 </div>
               ) : item.isWaiting ? (

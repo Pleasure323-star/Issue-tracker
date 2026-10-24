@@ -538,3 +538,59 @@ export async function listApprovalRules(projectId: string, db: Db = prisma) {
     orderBy: { createdAt: "desc" },
   });
 }
+
+
+/**
+ * Lists pending IssueApproval rows for all projects in a tenant (#432).
+ * Used to surface workflow approval requests in the Escalations queue so all
+ * human-intervention items live in a single place.
+ */
+export async function listPendingApprovals(tenantId: string, db: Db = prisma) {
+  if (typeof (db as { issueApproval?: unknown }).issueApproval === "undefined") {
+    return [];
+  }
+  return db.issueApproval.findMany({
+    where: {
+      status: "pending",
+      bug: { tenantId, isDeleted: false },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: 50,
+    select: {
+      id: true,
+      stage: true,
+      status: true,
+      createdAt: true,
+      rule: {
+        select: {
+          issueType: { select: { name: true } },
+          severity: true,
+          fileGlob: true,
+        },
+      },
+      bug: {
+        select: {
+          id: true,
+          number: true,
+          title: true,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Count of pending IssueApproval rows for a tenant (#432).
+ * Used alongside countPendingEscalations to drive the Agents badge total.
+ */
+export async function countPendingApprovals(tenantId: string, db: Db = prisma): Promise<number> {
+  if (typeof (db as { issueApproval?: unknown }).issueApproval === "undefined") {
+    return 0;
+  }
+  return db.issueApproval.count({
+    where: {
+      status: "pending",
+      bug: { tenantId, isDeleted: false },
+    },
+  });
+}
