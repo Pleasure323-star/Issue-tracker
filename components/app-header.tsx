@@ -230,9 +230,9 @@ export function AppHeader({
           <Image
             src="/ziki-logo.png"
             alt="Ziki"
-            width={100}
-            height={28}
-            className="h-6 w-auto object-contain"
+            width={140}
+            height={40}
+            className="h-9 w-auto object-contain"
             unoptimized
           />
         </Link>
