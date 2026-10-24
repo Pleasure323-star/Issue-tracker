@@ -10,7 +10,11 @@ import { RoleSwitcher } from "@/components/role-switcher";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { isNavItemActive } from "@/lib/header-nav";
 import { Avatar } from "@/components/avatar";
-import { AccountThemeSelector } from "@/components/theme-toggle";
+import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
+import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
+import { recentNotificationsAction } from "@/app/actions/notifications";
+import { LocalTime } from "@/components/local-time";
+import { BASE_PATH } from "@/lib/base-path";
 
 export type ShellAgent = {
   id: string;
@@ -34,7 +38,7 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+        className="workspace quiet inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
       >
         <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
         <span className="truncate font-semibold text-zk-text">{selected?.name ?? "Workspace"}</span>
@@ -152,12 +156,12 @@ function TrophyIcon() {
 }
 
 /** Notification bell icon button (matches artifact: bell icon). */
-function NotificationsBell({ unreadCount }: { unreadCount: number }) {
+function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
   const label = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
   return (
     <button
       type="button"
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip"
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip relative ${active ? "border-electric-blue" : ""}`}
       aria-label={label}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -215,7 +219,7 @@ export function AppHeader({
     // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Brand: ziki logo */}
+        {/* Brand: ziki logo mark */}
         <Link
           href="/dashboard"
           aria-label="Ziki"
@@ -237,7 +241,8 @@ export function AppHeader({
         {/* Spacer pushes agents/notifications/account to the right. */}
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
-          <NotificationsBell unreadCount={unreadCount} />
+          <ThemeToggle />
+          <NotificationsBell unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
           <div ref={accountRef} className="relative">
             <button
               ref={accountButtonRef}
@@ -260,7 +265,7 @@ export function AppHeader({
                 <span className="ml-1">{points} pts</span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6" />}
               </svg>
             </button>
 
