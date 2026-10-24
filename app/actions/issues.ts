@@ -96,6 +96,7 @@ import {
   RATE_LIMIT_MESSAGE,
 } from "@/lib/rate-limit";
 import { publish } from "@/lib/agent-api/events";
+import { releaseClaimsOnReassign } from "@/lib/claims-on-reassign";
 import { issueChangePayload, publishWebEvent } from "@/lib/agent-api/web-events";
 import { firstPullRequestLink, pullRequestAttachment } from "@/lib/github/pr-mention";
 import { isPullRequestClosedUnmerged, standingAcceptance } from "@/lib/github/merge-pr";
@@ -808,6 +809,23 @@ export async function updateBugAction(
         await tx.bug.update({
           where: { id: bugId },
           data,
+        });
+      }
+      // #658: unassigning or reassigning takes the task from an agent's claim.
+      // Resolving or closing releases every claim below, so it is left to that.
+      if (
+        data.assigneeId !== undefined &&
+        data.assigneeId !== existing.assigneeId &&
+        data.status !== "resolved" &&
+        data.status !== "closed"
+      ) {
+        await releaseClaimsOnReassign(tx, {
+          tenantId: existing.tenantId,
+          bugId,
+          actorUserId: userId,
+          assigneeId: data.assigneeId ?? null,
+          status: data.status ?? existing.status,
+          statusChanged: data.status !== undefined && data.status !== existing.status,
         });
       }
       if (data.status === "resolved" || data.status === "closed") {
@@ -1881,6 +1899,8 @@ export async function selfAssignBugAction(
       assigneeId: true,
       isDeleted: true,
       voteCount: true,
+      status: true,
+      tenantId: true,
       assignee: { select: { name: true } },
     },
   });
@@ -1927,6 +1947,15 @@ export async function selfAssignBugAction(
       await tx.bug.update({
         where: { id: bugId },
         data: { assigneeId: targetAssigneeId },
+      });
+      // #658: giving an issue back releases the claim that put it on this person.
+      await releaseClaimsOnReassign(tx, {
+        tenantId: existing.tenantId,
+        bugId,
+        actorUserId: userId,
+        assigneeId: targetAssigneeId,
+        status: existing.status,
+        statusChanged: false,
       });
       // Taking an issue means watching it (#216).
       await ensureWatching(tx, bugId, [targetAssigneeId]);

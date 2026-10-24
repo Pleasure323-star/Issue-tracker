@@ -19,6 +19,7 @@ import { validateBulk } from "@/lib/bulk-actions";
 import { awardSolver } from "@/lib/points/award";
 import { solverAwardForBulkChange } from "@/lib/points/bulk-award";
 import { ensureWatching } from "@/lib/watch";
+import { releaseClaimsOnReassign } from "@/lib/claims-on-reassign";
 import { notifyLater } from "@/lib/notify";
 import type { NotificationEvent } from "@/lib/notifications";
 import type { Severity, Status } from "@prisma/client";
@@ -205,6 +206,22 @@ export async function bulkUpdateBugsAction(
         if (!changedIds.includes(bug.id)) continue;
         if (change.assigneeId && change.assigneeId !== bug.assigneeId) {
           await ensureWatching(tx, bug.id, [change.assigneeId]);
+        }
+        // #658: as on the single edit, a new assignee takes the task from an agent's claim.
+        if (
+          change.assigneeId !== undefined &&
+          change.assigneeId !== bug.assigneeId &&
+          change.status !== "resolved" &&
+          change.status !== "closed"
+        ) {
+          await releaseClaimsOnReassign(tx, {
+            tenantId: bug.tenantId,
+            bugId: bug.id,
+            actorUserId: user.id,
+            assigneeId: change.assigneeId ?? null,
+            status: change.status ?? bug.status,
+            statusChanged: Boolean(change.status) && change.status !== bug.status,
+          });
         }
         const target = solverAwardForBulkChange(bug, change);
         if (target) await awardSolver(tx, target);
