@@ -10,11 +10,7 @@ import { RoleSwitcher } from "@/components/role-switcher";
 import { isAdmin, isSuperAdmin, type AppRole } from "@/lib/roles";
 import { isNavItemActive } from "@/lib/header-nav";
 import { Avatar } from "@/components/avatar";
-import { ThemeToggle, AccountThemeSelector } from "@/components/theme-toggle";
-import { formatPoints, pointsProgress, TARGET_POINTS } from "@/lib/points/rules";
-import { recentNotificationsAction } from "@/app/actions/notifications";
-import { LocalTime } from "@/components/local-time";
-import { BASE_PATH } from "@/lib/base-path";
+import { AccountThemeSelector } from "@/components/theme-toggle";
 
 export type ShellAgent = {
   id: string;
@@ -22,7 +18,6 @@ export type ShellAgent = {
   level: string;
 };
 
-/** Workspace dropdown button (matches AgentsMenu styling). */
 function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceChoice[]; activeTenantId: string | null }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +70,6 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
   );
 }
 
-/** Agents dropdown button (matches artifact: "Agents ▼" pill). */
 function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: ShellAgent[] }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -134,7 +128,6 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
-/** Agent icon (matches artifact: person silhouette). */
 function AgentIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -144,7 +137,6 @@ function AgentIcon() {
   );
 }
 
-/** Trophy icon for points badge (matches artifact: 🏆 5 pts). */
 function TrophyIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -155,13 +147,12 @@ function TrophyIcon() {
   );
 }
 
-/** Notification bell icon button (matches artifact: bell icon). */
-function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
+function NotificationsBell({ unreadCount }: { unreadCount: number }) {
   const label = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
   return (
     <button
       type="button"
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip relative ${active ? "border-electric-blue" : ""}`}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip"
       aria-label={label}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -214,12 +205,11 @@ export function AppHeader({
   const canSwitchRole = Boolean((isRealSuperAdmin || isRealAdmin) && role);
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
+  const chevronPath = accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6";
+
   return (
-    // Workspace top bar: 66 px high, near-white surface, subtle bottom divider.
-    // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Brand: ziki logo mark */}
         <Link
           href="/dashboard"
           aria-label="Ziki"
@@ -235,14 +225,11 @@ export function AppHeader({
           />
         </Link>
 
-        {/* Workspace dropdown */}
         <WorkspaceMenu workspaces={workspaces} activeTenantId={activeTenantId} />
 
-        {/* Spacer pushes agents/notifications/account to the right. */}
         <div className="ml-auto flex items-center gap-2 sm:gap-3 lg:shrink-0">
           <AgentsMenu pathname={pathname} agents={agents} />
-          <ThemeToggle />
-          <NotificationsBell unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
+          <NotificationsBell unreadCount={unreadCount} />
           <div ref={accountRef} className="relative">
             <button
               ref={accountButtonRef}
@@ -265,7 +252,7 @@ export function AppHeader({
                 <span className="ml-1">{points} pts</span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6" />}
+                <path d={chevronPath} />
               </svg>
             </button>
 

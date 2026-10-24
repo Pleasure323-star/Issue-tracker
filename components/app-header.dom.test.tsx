@@ -149,11 +149,7 @@ function renderHeader(props?: Partial<Parameters<typeof AppHeader>[0]>) {
   };
   return render(
     <>
-      <AppSidebar
-        issueCount={4}
-        workspaces={shared.workspaces ?? []}
-        activeTenantId={shared.activeTenantId ?? null}
-      />
+      <AppSidebar issueCount={4} pendingEscalationsCount={0} />
       <AppHeader {...shared} />
     </>,
   );
@@ -201,7 +197,7 @@ describe("account menu role switch", () => {
   });
 
   it("renders Escalations as a link, with the pending count (#763)", () => {
-    renderHeader({ pendingEscalationsCount: 5 });
+    renderHeader({ workspaces: [{ id: "t1", name: "Ziki", slug: "ziki" }], activeTenantId: "t1" });
     const link = screen.getByRole("link", { name: /escalation/i });
     expect(link.getAttribute("href")).toBe("/escalations");
     expect(screen.getAllByLabelText("5 pending").length).toBeGreaterThan(0);
@@ -214,7 +210,7 @@ describe("account menu role switch", () => {
   });
 
   it("shows this person's points in the bar", () => {
-    renderHeader({ userId: "ada", points: 128, solvedTasks: 4 });
+    renderHeader({ userId: "ada", points: 128 });
     const link = screen.getByRole("link", { name: /128 pts of 500, 4 solved/i });
     expect(link.getAttribute("href")).toBe("/users/ada");
     expect(link.textContent).toContain("128");
@@ -224,9 +220,7 @@ describe("account menu role switch", () => {
     const { container } = renderHeader({
       userId: "ada",
       points: 0,
-      solvedTasks: 0,
       unreadCount: 3,
-      pendingEscalationsCount: 5,
     });
     expect(labelInNameMismatches(container)).toEqual([]);
     const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
