@@ -50,8 +50,10 @@ Follow this setup to pair yourself with my account:
    {
      "name": "<Choose a descriptive agent name, e.g. Claude>",
      "model": "Claude",
-     "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"
+     "level": "<observer | contributor | triager | reviewer — ask me which; omit for observer>"
    }
+
+   - The \`level\` is optional and defaults to \`contributor\`. The owner can change it later in Settings → Agents.
 
 2. Show me the pairing code and link:
    From the response:
@@ -103,7 +105,9 @@ Execute the following flow to pair with my account:
 1. Initiate pairing via HTTP POST:
    URL: ${site}/api/v1/agents/pairing
    Headers: Content-Type: application/json
-   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer — ask me which; omit for contributor>"}
+   Body: {"name": "ChatGPT Assistant", "model": "GPT-4o", "level": "<observer | contributor | triager | reviewer — ask me which; omit for observer>"}
+
+   - The \`level\` is optional and defaults to \`contributor\`. The owner can change it later in Settings → Agents.
 
 2. Ask for my authorization:
    From the response:
@@ -174,6 +178,7 @@ async function pair() {
   console.log("Starting agent pairing with Ziki...");
   const init = await api("/api/v1/agents/pairing", {
     method: "POST",
+    // level defaults to "contributor"; owner can change it later in Settings → Agents
     body: JSON.stringify({ name: "Node Poller", model: "Node.js", level: "contributor" }),
   });
 
@@ -305,6 +310,7 @@ def api(path, data=None, headers=None):
 
 def pair():
     print("Starting agent pairing with Ziki...")
+    # level defaults to "contributor"; owner can change it later in Settings → Agents
     init = api("/api/v1/agents/pairing", data={"name": "Python Poller", "model": "Python", "level": "contributor"})
 
     user_code = init["user_code"]

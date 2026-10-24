@@ -55,7 +55,7 @@ export type IssuedKey = { agentId: string; name: string; level: AgentLevel; rawK
 /** Inserts an agent and its first key. Shared by the settings page and pairing. */
 export async function insertAgentWithKey(
   db: Db,
-  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string },
+  input: { tenantId: string; ownerUserId: string; name: string; model: string | null; level: AgentLevel; projectId: string; instructions?: string | null },
 ): Promise<IssuedKey> {
   const key = generateApiKey();
   const { projectId, ...agentInput } = input;
@@ -230,7 +230,7 @@ export async function setAgentLevel(actor: Actor, agentId: string, level: AgentL
   const before = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { level: true } });
   if (before.level === level) return { ok: true };
   await prisma.$transaction(async (tx) => {
-    await tx.agent.update({ where: { id: agentId }, data: { level } });
+    await tx.agent.update({ where: { id: agentId }, data: { level, levelChangedAt: new Date() } });
     await audit(
       { agentId, tenantId: managed.agent.tenantId },
       "agent.level_changed",
