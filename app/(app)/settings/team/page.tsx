@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./team.css";
 import { requireUser } from "@/lib/auth-helpers";
 import {
   StatusPage,
@@ -12,8 +13,10 @@ import { workflowFor } from "@/lib/workflow";
 import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import { projectContextFor } from "@/lib/project-context";
 import { teamAgentsForMembers, teamMetricSince } from "@/lib/team-directory";
-import { TeamAgentList } from "@/components/team-agent-list";
-import { Badge } from "@/components/ui/badge";
+import { TeamMemberRow } from "./team-member-row";
+import { TeamAgentTable } from "./team-agent-table";
+import { isTenantAdminRole } from "@/lib/agents/membership";
+import { settableLevels } from "@/lib/agents/levels";
 
 export const metadata = { title: "Team" };
 
@@ -21,16 +24,19 @@ type TeamPageProps = {
   searchParams: Promise<{ online?: string; capacity?: string; area?: string }>;
 };
 
-/** The team directory at its settings home: members with filters for online status, capacity and area, plus agent activity and points. */
+/** The team directory at its settings home: members with filters for online status and capacity, plus agent activity and points. */
 export default async function TeamPage({ searchParams }: TeamPageProps) {
   const user = await requireUser();
   const tenantId = await currentTenantIdFor(user.id);
   if (!tenantId) {
     return (
-      <div className="mx-auto max-w-4xl space-y-3">
-        <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
-        <p className="text-sm text-slate-600">Join or create a workspace to see its team directory.</p>
-        <Link href="/tenants" className="text-sm font-medium text-teal-700 underline">Create or join a workspace</Link>
+      <div className="team-page mx-auto flex w-full flex-col gap-6 pb-10">
+        <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Team</h1>
+        <section className="team-empty">
+          <h2>No workspace yet</h2>
+          <p>Join or create a workspace to see its team directory.</p>
+          <Link href="/tenants" className="team-primary">Create or join a workspace</Link>
+        </section>
       </div>
     );
   }
@@ -38,32 +44,17 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
   const filters = await searchParams;
   let context;
   let members;
-  let areas;
   let agentsMap;
   let points;
   let activeClaims;
   let maxActiveClaims;
   try {
     context = await projectContextFor(prisma, tenantId);
-    [members, areas] = await Promise.all([
-      prisma.membership.findMany({
-        where: { tenantId },
-        orderBy: { user: { name: "asc" } },
-        select: {
-          role: true,
-          user: { select: { id: true, name: true } },
-        },
-      }),
-      // The active project's areas (#609), the ones issues are filed under,
-      // not its platforms.
-      context.activeProjectId
-        ? prisma.projectArea.findMany({
-            where: { projectId: context.activeProjectId },
-            orderBy: [{ name: "asc" }, { id: "asc" }],
-            select: { id: true, name: true },
-          })
-        : Promise.resolve([]),
-    ]);
+    members = await prisma.membership.findMany({
+      where: { tenantId },
+      orderBy: { user: { name: "asc" } },
+      select: { role: true, user: { select: { id: true, name: true } } },
+    });
     const memberIds = members.map(({ user: member }) => member.id);
     const since = teamMetricSince();
     [agentsMap, points, activeClaims] = await Promise.all([
@@ -108,9 +99,12 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
       </StatusPage>
     );
   }
+  const viewerMembership = members.find((membership) => membership.user.id === user.id);
+  const manageLevels = isTenantAdminRole(viewerMembership?.role, user.role)
+    ? settableLevels({ isOwner: false, isTenantAdmin: true })
+    : null;
   const pointsMap = new Map(points.map((row) => [row.userId, row._sum.points ?? 0]));
   const activeClaimMap = new Map(activeClaims.map((row) => [row.beneficiaryUserId, row._count._all]));
-  const selectedArea = areas.some((area) => area.id === filters.area) ? filters.area : "";
   const showOnlineOnly = filters.online === "1";
   const showCapacityOnly = filters.capacity === "1";
   const capacityScope = context.activeProjectId ? "selected project" : "workspace";
@@ -119,86 +113,81 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
     const { user: member } = membership;
     const memberAgents = agentsMap.get(member.id) ?? [];
     const hasCapacity = (activeClaimMap.get(member.id) ?? 0) < maxActiveClaims;
-    const matchingAgents = memberAgents.filter((agent) =>
-      (!showOnlineOnly || agent.online) &&
-      (!selectedArea || agent.currentWork.some((issue) => issue.areaId === selectedArea)),
-    );
+    const matchingAgents = memberAgents.filter((agent) => !showOnlineOnly || agent.online);
     if (
-      ((showOnlineOnly || selectedArea) && matchingAgents.length === 0) ||
+      (showOnlineOnly && matchingAgents.length === 0) ||
       (showCapacityOnly && (!hasCapacity || memberAgents.length === 0))
     ) return [];
-    const visibleAgents = showOnlineOnly || selectedArea ? matchingAgents : memberAgents;
+    const visibleAgents = showOnlineOnly ? matchingAgents : memberAgents;
     return [{ ...membership, agents: visibleAgents, points: pointsMap.get(member.id) ?? 0, activeClaims: activeClaimMap.get(member.id) ?? 0 }];
   });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/settings" className="text-sm text-teal-700 hover:underline">
-          ← Back to settings
-        </Link>
-      </div>
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-slate-900">Team</h1>
-        <p className="text-sm text-slate-600">
+    <div className="team-page mx-auto flex w-full flex-col gap-6 pb-10">
+      <header className="team-heading">
+        <div className="team-heading-main">
+        <div className="space-y-2">
+        <h1 className="text-[28px] font-extrabold tracking-[-0.02em] text-zk-text">Team</h1>
+        <p className="text-sm text-zk-muted">People, agents, and current work across your workspace.</p>
+        <details className="team-activity-note">
+        <summary>How activity and permissions work</summary>
+        <p className="text-sm text-zk-muted">
           People and their active agents in this workspace. Online means an agent has used the API, claimed an issue or sent a claim heartbeat in the last 15 minutes; points and accepted fixes cover the last 30 days.
+          {manageLevels ? " As an admin you can change anyone's agent role here, including dispatcher and merger." : ""}
         </p>
+        </details>
+        </div>
+        </div>
       </header>
 
-      <form action="/settings/team" method="get" className="rounded-xl border border-slate-200 bg-white p-4">
+      <form id="team-filter-form" action="/settings/team" method="get" className="team-filters">
         <fieldset>
-          <legend className="text-sm font-semibold text-slate-900">Filter team</legend>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" name="online" value="1" defaultChecked={showOnlineOnly} className="size-4 accent-teal-700" />
+          <legend className="sr-only">Filter team</legend>
+          <div className="team-filter-track">
+            <label className="team-filter-pill">
+              <input type="checkbox" name="online" value="1" defaultChecked={showOnlineOnly} className="size-4 accent-electric-blue-strong" />
               Online now
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" name="capacity" value="1" defaultChecked={showCapacityOnly} className="size-4 accent-teal-700" />
+            <label className="team-filter-pill">
+              <input type="checkbox" name="capacity" value="1" defaultChecked={showCapacityOnly} className="size-4 accent-electric-blue-strong" />
               Has capacity
             </label>
-            {areas.length > 0 ? (
-              <label className="flex flex-col gap-1 text-sm text-slate-700">
-                Area
-                <select name="area" defaultValue={selectedArea} className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-900">
-                  <option value="">All areas</option>
-                  {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
-                </select>
-              </label>
-            ) : null}
-            <button type="submit" className="min-h-10 rounded-md bg-teal-700 px-4 text-sm font-medium text-white hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
-              Apply filters
-            </button>
-            {(showOnlineOnly || showCapacityOnly || selectedArea) ? (
-              <Link href="/settings/team" className="text-sm font-medium text-teal-700 underline">Clear filters</Link>
+            {(showOnlineOnly || showCapacityOnly) ? (
+              <Link href="/settings/team" className="text-sm font-bold text-zk-accent underline">Clear filters</Link>
             ) : null}
           </div>
         </fieldset>
+        <button type="submit" className="team-primary team-apply">Apply filters</button>
       </form>
 
       {visibleMembers.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+        <p className="rounded-[20px] border border-zk-border bg-zk-surface p-6 text-sm text-zk-muted">
           {members.length === 0
             ? "This workspace has no members yet."
             : "No team members match these filters."}
         </p>
       ) : (
-        <ul aria-label="Workspace members" className="grid gap-4 md:grid-cols-2">
+        // The overflowing table region needs keyboard focus for horizontal arrow-key scrolling.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        <div className="team-table-scroll" role="region" aria-label="Workspace members" tabIndex={0}>
+        <table className="team-table">
+          <caption className="sr-only">Workspace members, points in the last 30 days, active claims in the {capacityScope}, and their agents</caption>
+          <thead><tr>
+            <th scope="col">Member</th>
+            <th scope="col">Workspace role</th>
+            <th scope="col">Points <span>Last 30 days</span></th>
+            <th scope="col">Active claims <span>{capacityScope === "workspace" ? "Workspace" : "Selected project"}</span></th>
+            <th scope="col">Agents</th>
+          </tr></thead>
+          <tbody>
           {visibleMembers.map(({ user: member, role, agents, points: memberPoints, activeClaims: claimCount }) => (
-            <li key={member.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="min-w-0 break-words text-lg font-semibold text-slate-900">
-                  <Link href={`/users/${member.id}`} className="hover:text-teal-800 hover:underline">{member.name}</Link>
-                </h2>
-                <Badge className="bg-slate-100 text-slate-700">{role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member"}</Badge>
-              </div>
-              <p className="mt-1 text-sm text-slate-600">
-                {memberPoints} points in the last 30 days · {claimCount}/{maxActiveClaims} active claims in the {capacityScope}
-              </p>
-              <TeamAgentList agents={agents} />
-            </li>
+            <TeamMemberRow key={member.id} member={member} role={role === "owner" ? "Owner" : role === "admin" ? "Admin" : "Member"} points={memberPoints} claims={claimCount} limit={maxActiveClaims} agentCount={agents.length} onlineCount={agents.filter((agent) => agent.online).length}>
+              <TeamAgentTable agents={agents} manageLevels={manageLevels} memberName={member.name} />
+            </TeamMemberRow>
           ))}
-        </ul>
+          </tbody>
+        </table>
+        </div>
       )}
     </div>
   );

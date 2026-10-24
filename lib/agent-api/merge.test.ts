@@ -13,7 +13,7 @@ type VerdictRow = {
 
 const state = vi.hoisted(() => ({
   verdicts: [] as VerdictRow[],
-  confirmations: [] as { agentId: string; agent: { id: string; ownerUserId: string; level?: string } }[],
+  confirmations: [] as { agentId: string; onBehalfOfUserId: string; agent: { id: string; ownerUserId: string; level?: string } }[],
 }));
 
 const db = vi.hoisted(() => ({
@@ -54,6 +54,7 @@ function bugRow(overrides: Record<string, unknown> = {}) {
     beneficiaryUserId: "ada",
     createdByAgentId: null,
     createdByAgent: null,
+    project: { repoUrl: "https://github.com/Zedu-Endor/issue-tracker", githubInstallationId: "app-1" },
     claims: [{
       status: "active",
       releasedAt: null,
@@ -72,9 +73,9 @@ function merger(id: string, ownerId: string, level: "observer" | "contributor" |
 /** The two independent accepts plus a triage clear that confirm an issue. */
 function confirmWith(ownerA: string, ownerB: string) {
   state.confirmations = [
-    { agentId: `a-${ownerA}`, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
-    { agentId: `a-${ownerB}`, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
-    { agentId: "a-tia", agent: { id: "a-tia", ownerUserId: "tia", level: "triager" } },
+    { agentId: `a-${ownerA}`, onBehalfOfUserId: ownerA, agent: { id: `a-${ownerA}`, ownerUserId: ownerA } },
+    { agentId: `a-${ownerB}`, onBehalfOfUserId: ownerB, agent: { id: `a-${ownerB}`, ownerUserId: ownerB } },
+    { agentId: "a-tia", onBehalfOfUserId: "tia", agent: { id: "a-tia", ownerUserId: "tia", level: "triager" } },
   ];
 }
 
@@ -149,6 +150,15 @@ describe("acceptFix: who may merge (#434)", () => {
 });
 
 describe("acceptFix: the merger must be independent too (#493)", () => {
+  it("refuses the assigned solver's merger even if a different agent holds the claim", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow({ assigneeId: "mo" }));
+    expect(await acceptFix(merger("m1", "mo"), "bug1")).toMatchObject({ status: 403, error: "not_independent" });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
   it("refuses a merger whose owner is the claim's beneficiary, even with every other gate met", async () => {
     confirmWith("rob", "sam");
     verdict("r1", "rob");
@@ -259,6 +269,47 @@ describe("acceptFix: the gate (#434)", () => {
       missing: "pull_request",
     });
     expect(db.testVerdict.findMany).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses acceptance when the linked pull request was closed without being merged (#642)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    const client = {
+      getPullRequest: vi.fn(async () => ({ state: "closed", merged: false, mergeable: false, headSha: "sha1" })),
+      checksGreen: vi.fn(async () => true),
+      mergePullRequest: vi.fn(),
+    };
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1", { client });
+    expect(result).toMatchObject({
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "That pull request is closed without being merged.",
+    });
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses acceptance when the pull request is not in the project's repository (#642)", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(
+      bugRow({
+        pullRequestUrl: "https://github.com/someone-else/repo/pull/1",
+        project: { repoUrl: "https://github.com/zedu/web", githubInstallationId: "123" },
+      }),
+    );
+    const result = await acceptFix(merger("m1", "mo", "merger"), "bug1");
+    expect(result).toMatchObject({
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "That pull request is not in this project's repository.",
+    });
+    expect(db.bug.update).not.toHaveBeenCalled();
     expect(db.pointEntry.createMany).not.toHaveBeenCalled();
   });
 

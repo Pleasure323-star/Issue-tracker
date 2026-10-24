@@ -6,11 +6,11 @@ import { reviewerConflict, reviewerCreditConflict, type ReviewedBug } from "@/li
 import { hasLevel } from "@/lib/agents/levels";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { award, type PointAward } from "@/lib/points/award";
-import { confirmationReviewerSourceKey, CONFIRMATION_REVIEWER_POINTS, DUPLICATE_MARKER_POINTS, duplicateMarkerSourceKey, pointSourceKey, reviewerPointsAt, TRIAGER_CLEAR_POINTS, triagerClearSourceKey } from "@/lib/points/rules";
+import { confirmationReviewerSourceKey, duplicateMarkerSourceKey, pointSourceKey, reviewerPointsAt, triagerClearSourceKey } from "@/lib/points/rules";
 import {
   calculateReporterPoints,
-  getProjectRewardConfig,
 } from "@/lib/points/project-rewards";
+import { getPlatformRewardConfig, getProjectRewardConfig } from "@/lib/points/platform-rewards";
 import { severities } from "@/lib/validations/issue";
 import { publish } from "@/lib/agent-api/events";
 import { promoteEarnedReviewer } from "@/lib/agents/promotion";
@@ -19,6 +19,7 @@ import { notifyClaimOffered } from "@/lib/agent-notifications";
 import { WORK_READINESS_VOTE_THRESHOLD } from "@/lib/ticket-assignment";
 import { hasBlockingRedesign } from "@/lib/redesigns";
 import { workflowFor } from "@/lib/workflow";
+import { parseIssueRef } from "@/lib/issue-ref";
 
 /** Severity order for the reviewer agreement rule (#528). */
 const SEVERITY_RANK: Record<(typeof severities)[number], number> = {
@@ -156,6 +157,35 @@ async function latestRevisionAt(db: Db, bug: LoadedBug): Promise<Date | null> {
 }
 
 /**
+ * Claim/assignment independence is enforced at submission under the issue
+ * lock (#579). Do not reapply those mutable relationships to accepted
+ * validations: a later award must not undo an earlier independent review.
+ * Reporter/beneficiary checks, undone audits and revision checks still apply.
+ */
+function recordedReviewBug(bug: LoadedBug): ReviewedBug {
+  return { ...bug, assigneeId: null, claims: [] };
+}
+
+/**
+ * This agent's validation of `kind` on `bug`, when it was made before the
+ * issue's latest edit and so no longer counts (#493). Null otherwise.
+ */
+async function staleValidationOf(
+  db: Db,
+  bug: LoadedBug,
+  agentId: string,
+  kind: ValidationKind,
+): Promise<{ id: string } | null> {
+  const latestRevision = await latestRevisionAt(db, bug);
+  if (!latestRevision) return null;
+  const existing = await db.issueValidation.findFirst({
+    where: { bugId: bug.id, agentId, kind },
+    select: { id: true, createdAt: true },
+  });
+  return existing && existing.createdAt <= latestRevision ? { id: existing.id } : null;
+}
+
+/**
  * People credited for accepts of kind `real` that still count, oldest first.
  * One per owner: a second agent of the same person does not add a credit.
  */
@@ -181,14 +211,15 @@ async function countedConfirmationReviewers(db: Db, bug: LoadedBug): Promise<str
     },
   });
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   const owners = new Set<string>();
   const credited: string[] = [];
   for (const { id, onBehalfOfUserId, agent } of accepts) {
-    // Checked again now, not only when submitted: a claim taken since can
-    // make an earlier reviewer no longer independent.
+    // Retain report-side independence without invalidating a review after
+    // its owner subsequently becomes the solver.
     if (agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
+    if (reviewerCreditConflict(onBehalfOfUserId, reviewed)) continue;
     // An undone validation no longer counts toward confirming the issue.
     if (undone.has(id)) continue;
     if (owners.has(agent.ownerUserId)) continue;
@@ -223,19 +254,22 @@ async function isTriageCleared(db: Db, bug: LoadedBug): Promise<boolean> {
     select: {
       id: true,
       agentId: true,
+      onBehalfOfUserId: true,
       agent: { select: { id: true, ownerUserId: true, level: true } },
     },
   });
   if (clears.length === 0) return false;
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
-  for (const { id, agent } of clears as Array<{
+  const reviewed = recordedReviewBug(bug);
+  for (const { id, onBehalfOfUserId, agent } of clears as Array<{
     id: string;
+    onBehalfOfUserId: string;
     agent: { id: string; ownerUserId: string; level: string };
   }>) {
     if (agent.id === bug.createdByAgentId) continue;
     if (!hasLevel(agent.level as AgentContext["level"], "triager")) continue;
     if (reviewerConflict({ id: agent.id, ownerUserId: agent.ownerUserId }, reviewed)) continue;
+    if (reviewerCreditConflict(onBehalfOfUserId, reviewed)) continue;
     if (undone.has(id)) continue;
     return true;
   }
@@ -295,6 +329,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
   const bug = await db.bug.findUnique({ where: { id: bugId }, select: reviewedBugSelect });
   if (!bug) return [];
 
+  const platform = await getPlatformRewardConfig(db);
   const entries: PointAward[] = [];
 
   // Confirming reviewers are skipped entirely once a duplicate marker stands,
@@ -307,7 +342,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId,
         bugId,
         role: "reviewer",
-        points: reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS),
+        points: reviewerPointsAt(index, platform.confirmationReviewer),
         sourceKey: confirmationReviewerSourceKey(bugId, userId),
       });
     });
@@ -315,7 +350,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
 
   const latestRevision = await latestRevisionAt(db, bug);
   const undone = await undoneValidationIds(db, bug);
-  const reviewed: ReviewedBug = bug;
+  const reviewed = recordedReviewBug(bug);
   const verdicts = await db.issueValidation.findMany({
     where: {
       bugId,
@@ -343,6 +378,9 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
     if (undone.has(v.id)) continue;
     if (v.agent.id === bug.createdByAgentId) continue;
     if (reviewerConflict({ id: v.agent.id, ownerUserId: v.agent.ownerUserId }, reviewed)) continue;
+    // Duplicates pay the credited person nothing when that person is the
+    // reporter or beneficiary (#422, #579).
+    if (reviewerCreditConflict(v.onBehalfOfUserId, reviewed)) continue;
     const key = `${v.verdict}:${v.onBehalfOfUserId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -352,7 +390,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId: v.onBehalfOfUserId,
         bugId,
         role: "triager",
-        points: TRIAGER_CLEAR_POINTS,
+        points: platform.triagerClear,
         sourceKey: triagerClearSourceKey(bugId, v.onBehalfOfUserId),
       });
     } else if (v.verdict === "accept") {
@@ -361,7 +399,7 @@ export async function standingValidationAwards(db: Db, bugId: string): Promise<P
         userId: v.onBehalfOfUserId,
         bugId,
         role: "triager",
-        points: DUPLICATE_MARKER_POINTS,
+        points: platform.duplicateMarker,
         sourceKey: duplicateMarkerSourceKey(bugId, v.onBehalfOfUserId),
       });
     }
@@ -388,7 +426,8 @@ export type SubmitValidationResult =
   | { status: 400; error: "invalid_request"; message: string; field?: string }
   | { status: 403; error: "insufficient_level" | "creator_cannot_validate" | "not_independent"; message: string }
   | { status: 404; error: "not_found"; message: string }
-  | { status: 409; error: "already_validated"; message: string };
+  | { status: 409; error: "already_validated"; message: string }
+  | { status: 429; error: "rate_limited" };
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -398,6 +437,7 @@ export async function submitValidation(
   agent: AgentContext,
   bugId: string,
   rawBody: unknown,
+  beforeWrite?: (tx: Prisma.TransactionClient) => Promise<boolean>,
 ): Promise<SubmitValidationResult> {
   const parsed = validationBodySchema.safeParse(rawBody ?? {});
   if (!parsed.success) {
@@ -425,8 +465,14 @@ export async function submitValidation(
     };
   }
 
+  const ref = parseIssueRef(bugId);
   const bug = await prisma.bug.findFirst({
-    where: { id: bugId, tenantId: agent.tenantId, isDeleted: false },
+    where: {
+      ...(ref.kind === "number" ? { number: ref.number } : { id: ref.id }),
+      tenantId: agent.tenantId,
+      ...(agent.projectId ? { projectId: agent.projectId } : {}),
+      isDeleted: false,
+    },
     select: reviewedBugSelect,
   });
   if (!bug) return { status: 404, error: "not_found", message: "No such issue in this agent's tenant." };
@@ -506,24 +552,63 @@ export async function submitValidation(
       // Two reviewers can confirm at the same moment. Lock the issue so the
       // second transaction sees the first accept and still pays the reporter.
       await tx.$queryRaw`SELECT "id" FROM "Bug" WHERE "id" = ${bug.id} FOR UPDATE`;
+      // Awarding a bid also locks this row. Recheck after acquiring the lock
+      // so an award between preflight and insertion cannot admit a conflicted
+      // validation that the historical confirmation count would then trust.
+      const currentBug = await tx.bug.findUnique({
+        where: { id: bug.id },
+        select: { ...reviewedBugSelect, isDeleted: true },
+      });
+      if (!currentBug || currentBug.isDeleted) {
+        return {
+          submission: { status: 404 as const, error: "not_found" as const, message: "No such issue in this agent's tenant." },
+          automaticOffer: null,
+        };
+      }
+      if (
+        reviewerConflict({ id: agent.agentId, ownerUserId: agent.ownerId }, currentBug) ||
+        reviewerCreditConflict(onBehalfOfUserId, currentBug)
+      ) {
+        return {
+          submission: { status: 403 as const, error: "not_independent" as const, message: "The reviewer and credited person must be independent when the validation is recorded." },
+          automaticOffer: null,
+        };
+      }
+      // Rate limiting is part of this transaction, so expected permission and
+      // independence refusals do not spend a write. A rejected budget gate
+      // also commits no validation or rate-limit hit.
+      if (beforeWrite && !(await beforeWrite(tx))) {
+        return {
+          submission: { status: 429 as const, error: "rate_limited" as const },
+          automaticOffer: null,
+        };
+      }
       const { confirmationsNeeded } = await workflowFor(bug.projectId, tx);
       const wasConfirmed =
         (await countedConfirmations(tx, bug)) >= confirmationsNeeded &&
         (await isTriageCleared(tx, bug));
 
+      const fields = {
+        onBehalfOfUserId,
+        verdict: body.verdict,
+        notes: body.notes || null,
+        duplicateOfId: body.duplicateOfId ?? null,
+        severity: setsSeverity,
+        previousSeverity: setsSeverity ? bug.severity : null,
+      };
+      const validationSelect = { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true } as const;
+      // #493: an edit voids earlier validations, and an agent has one row per
+      // issue and kind. When this agent's row predates the latest edit, the
+      // re-review replaces it instead of being refused forever. A row made
+      // after the edit still gets 409. The stale row is deleted, not updated,
+      // so the replacement gets a new id: an undo of the old review (which
+      // keys on its validationId) can neither hide nor reverse the new one.
+      // Its `issue.validated` audit event stays as history.
+      const stale = await staleValidationOf(tx, bug, agent.agentId, body.kind);
+      if (stale) await tx.issueValidation.delete({ where: { id: stale.id } });
       const validation = await tx.issueValidation.create({
-        data: {
-          bugId: bug.id,
-          agentId: agent.agentId,
-          onBehalfOfUserId,
-          kind: body.kind,
-          verdict: body.verdict,
-          notes: body.notes || null,
-          duplicateOfId: body.duplicateOfId ?? null,
-          severity: setsSeverity,
-          previousSeverity: setsSeverity ? bug.severity : null,
-        },
-        select: { id: true, kind: true, verdict: true, severity: true, duplicateOfId: true, onBehalfOfUserId: true },
+        data: { bugId: bug.id, agentId: agent.agentId, kind: body.kind, ...fields },
+        select: validationSelect,
       });
       if (escalatesSeverity) {
         await tx.bug.update({ where: { id: bug.id }, data: { severity: setsSeverity! } });
@@ -534,9 +619,10 @@ export async function submitValidation(
         (await isTriageCleared(tx, bug));
       const newlyConfirmed = confirmed && !wasConfirmed;
       const duplicate = await isDuplicate(tx, bug);
+      const platform = await getPlatformRewardConfig(tx);
       if (body.kind === "duplicate") {
-        // The duplicate pass pays its own role (#428): 1 for clearing a report
-        // as not a duplicate (triage permission required), 5 for marking a real one.
+        // The duplicate pass pays its own role (#428): clear vs mark amounts
+        // come from platform settings (hard-coded fallback).
         const sourceKey =
           body.verdict === "reject" && hasLevel(agent.level, "triager")
             ? triagerClearSourceKey(bug.id, onBehalfOfUserId)
@@ -549,7 +635,7 @@ export async function submitValidation(
             userId: onBehalfOfUserId,
             bugId: bug.id,
             role: "triager",
-            points: body.verdict === "reject" ? TRIAGER_CLEAR_POINTS : DUPLICATE_MARKER_POINTS,
+            points: body.verdict === "reject" ? platform.triagerClear : platform.duplicateMarker,
             sourceKey,
           });
         }
@@ -563,7 +649,7 @@ export async function submitValidation(
             userId: onBehalfOfUserId,
             bugId: bug.id,
             role: "reviewer",
-            points: reviewerPointsAt(index, CONFIRMATION_REVIEWER_POINTS),
+            points: reviewerPointsAt(index, platform.confirmationReviewer),
             sourceKey: confirmationReviewerSourceKey(bug.id, onBehalfOfUserId),
           });
         }
