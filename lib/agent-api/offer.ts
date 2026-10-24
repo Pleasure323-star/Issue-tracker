@@ -187,8 +187,15 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
       if (bug.status !== "open") throw new IssueApiError(409, "Only open issues can be offered.");
       if (bug.voteCount < WORK_READINESS_VOTE_THRESHOLD) throw new IssueApiError(409, `The issue must reach at least ${WORK_READINESS_VOTE_THRESHOLD} upvotes before it can be offered.`);
       if (!await isConfirmed(bugId, tx)) throw new IssueApiError(409, "The issue must be confirmed before it can be offered.");
-      await assertRedesignOpen(bugId, tx);
-      await assertApprovalOpen(bugId, "before_offer", { db: tx, tenantId: agent.tenantId, agent });
+      // #508: a closed gate is returned rather than thrown, so the approval
+      // request assertApprovalOpen may have just created still commits.
+      try {
+        await assertRedesignOpen(bugId, tx);
+        await assertApprovalOpen(bugId, "before_offer", { db: tx, tenantId: agent.tenantId, agent });
+      } catch (error) {
+        if (error instanceof IssueApiError && error.status === 409) return { refusal: error };
+        throw error;
+      }
       const current = await tx.issueClaim.findFirst({ where: { bugId, releasedAt: null } });
       if (current) {
         if (current.status === "offered" && !isOfferExpired(current.offeredAt)) {
@@ -203,6 +210,7 @@ export async function offerIssue(agent: AgentContext, projectId: string, bugId: 
       if (!next) throw new IssueApiError(409, "No eligible person is available for this offer.");
       return { ...next, created: true };
     });
+    if ("refusal" in result) throw result.refusal;
     if (result.created) {
       notifyClaimOffered({ id: result.claim.id, bugId, bugTitle: result.bugTitle, beneficiaryUserId: result.beneficiaryUserId });
       scheduleOfferExpiry(result.claim.id);
