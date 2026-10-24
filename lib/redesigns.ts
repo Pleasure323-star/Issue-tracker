@@ -20,7 +20,17 @@ export const redesignDecisionSchema = z.object({ decision: z.enum(["approved", "
 export async function proposeRedesign(agent: AgentContext, input: z.infer<typeof redesignSchema>) {
   // #412: a project-scoped key may only propose in its own project.
   assertKeyProject(agent, input.projectId);
-  const onBehalfOfUserId = input.onBehalfOfUserId ?? agent.ownerId;
+  let onBehalfOfUserId = input.onBehalfOfUserId;
+  if (!onBehalfOfUserId) {
+    // Route proposals without a beneficiary to a tenant admin eligible to
+    // decide under decideRedesign, rather than the author agent's owner.
+    const admin = await prisma.membership.findFirst({
+      where: { tenantId: agent.tenantId, role: { in: ["owner", "admin"] } },
+      select: { userId: true },
+    });
+    if (!admin) throw new IssueApiError(422, "No tenant admin available to decide this redesign.");
+    onBehalfOfUserId = admin.userId;
+  }
   const proposal = await prisma.$transaction(async (tx) => {
     const project = await tx.project.findFirst({ where: { id: input.projectId, tenantId: agent.tenantId }, select: { id: true } });
     if (!project) throw new IssueApiError(404, "Project not found.");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -139,34 +139,49 @@ export function EscalationAnswerForm({
 
 export function RedesignDecisionButtons({
   proposalId,
+  bugId,
   onDecided,
 }: {
   proposalId: string;
+  bugId?: string | null;
   onDecided?: () => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const handleDecide = (decision: "approved" | "rejected" | "chosen") => {
     startTransition(async () => {
       const res = await decideRedesignAction(proposalId, decision);
       if (res.ok) {
+        setError(null);
         onDecided?.();
         router.refresh();
+      } else {
+        setError(res.error);
       }
     });
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button
-        type="button"
-        disabled={isPending}
-        onClick={() => handleDecide("approved")}
-        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
-      >
-        {isPending ? "Deciding…" : "Approve Design"}
-      </Button>
+      {bugId ? (
+        <Link
+          href={`/issues/${bugId}`}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5 rounded"
+        >
+          Review in issue comparison
+        </Link>
+      ) : (
+        <Button
+          type="button"
+          disabled={isPending}
+          onClick={() => handleDecide("approved")}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1.5"
+        >
+          {isPending ? "Deciding…" : "Approve Design"}
+        </Button>
+      )}
       <Button
         type="button"
         disabled={isPending}
@@ -176,6 +191,9 @@ export function RedesignDecisionButtons({
       >
         Reject
       </Button>
+      {error ? (
+        <p className="text-xs text-red-700">{error}</p>
+      ) : null}
     </div>
   );
 }
@@ -189,13 +207,17 @@ export function ApprovalDecisionButtons({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const handleDecide = (decision: "approved" | "rejected") => {
     startTransition(async () => {
       const res = await decideApprovalAction(approvalId, decision);
       if (res.ok) {
+        setError(null);
         onDecided?.();
         router.refresh();
+      } else {
+        setError(res.error);
       }
     });
   };
@@ -219,6 +241,9 @@ export function ApprovalDecisionButtons({
       >
         Reject
       </Button>
+      {error ? (
+        <p className="text-xs text-red-700">{error}</p>
+      ) : null}
     </div>
   );
 }

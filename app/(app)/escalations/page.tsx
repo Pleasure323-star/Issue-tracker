@@ -177,9 +177,7 @@ export default async function EscalationsPage({
                 </div>
               ) : item.isWaiting && item.source === "redesign" ? (
                 <div className="border-t border-slate-100 pt-2">
-                  <Link href={item.href} className="text-xs font-medium text-teal-700 hover:underline">
-                    Review proposal →
-                  </Link>
+                  <RedesignDecisionButtons proposalId={item.id} bugId={item.bug?.id ?? null} />
                 </div>
               ) : item.isWaiting && item.source === "approval" ? (
                 <div className="border-t border-slate-100 pt-2">

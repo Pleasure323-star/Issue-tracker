@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resumeAfterWait } from "@/lib/claim-deadline";
 import { assertKeyProject, type AgentContext } from "@/lib/agents/require-agent";
+import { isTenantAdminRole } from "@/lib/agents/membership";
 import { audit } from "@/lib/agents/audit";
 import { publish } from "@/lib/agent-api/events";
 import { notifyAgentQuestion } from "@/lib/agent-notifications";
@@ -261,13 +262,21 @@ export async function countPendingEscalations(userId: string, tenantId: string):
   });
 }
 
-/** Pending redesign proposals needing a decision, for the onBehalfOf user (#432). */
+/** Pending redesign proposals needing a decision, for the onBehalfOf user (#432).
+ * Only tenant admins can decide redesigns (see decideRedesign in lib/redesigns.ts).
+ */
 export async function listOwnerPendingRedesigns(userId: string, tenantId: string) {
+  const member = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId } },
+    select: { role: true },
+  });
+  if (!member || !isTenantAdminRole(member.role)) return [];
+
   return prisma.redesignProposal.findMany({
     where: {
       onBehalfOfUserId: userId,
       tenantId,
-      status: "proposed",
+      status: { in: ["proposed", "approved", "rejected", "superseded"] },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -283,8 +292,16 @@ export async function listOwnerPendingRedesigns(userId: string, tenantId: string
   });
 }
 
-/** Pending issue approvals needing a decision (#432). */
+/** Pending issue approvals needing a decision (#432).
+ * Only tenant admins can decide approvals (see decideApproval in lib/approvals.ts).
+ */
 export async function listOwnerPendingApprovals(userId: string, tenantId: string) {
+  const member = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId, userId } },
+    select: { role: true },
+  });
+  if (!member || !isTenantAdminRole(member.role)) return [];
+
   return prisma.issueApproval.findMany({
     where: {
       bug: { project: { tenantId } },
@@ -350,7 +367,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       body: r.body,
       cleanBody: r.body,
       escalationType: "Scope Expansion",
-      isWaiting: true,
+      isWaiting: r.status === "proposed",
       agentName: r.authorAgent.name,
       createdAt: r.createdAt,
       bug: r.bug ? { id: r.bug.id, title: r.bug.title } : null,
