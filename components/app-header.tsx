@@ -34,7 +34,7 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="workspace quiet inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
       >
         <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
         <span className="truncate font-semibold text-zk-text">{selected?.name ?? "Workspace"}</span>
@@ -218,8 +218,8 @@ export function AppHeader({
         {/* Brand: ziki logo */}
         <Link
           href="/dashboard"
-          aria-label="Ziki issues"
-          className="flex items-center gap-1 text-sm font-semibold text-zk-text"
+          aria-label="Ziki"
+          className="flex items-center gap-1"
         >
           <Image
             src="/ziki-logo.png"
@@ -260,7 +260,7 @@ export function AppHeader({
                 <span className="ml-1">{points} pts</span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6" />}
+                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
               </svg>
             </button>
 
