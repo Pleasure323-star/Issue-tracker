@@ -21,7 +21,9 @@ describe("agentBootstrapMessage", () => {
     expect(message).toContain("specialists do not inherit");
     expect(message).toContain("metadata.confidence");
     expect(message).toContain("metadata.confidenceReason");
-    expect(message).toContain("Only a tenant admin can assign dispatcher or merger");
+    expect(message).toContain("The owner can assign dispatcher after pairing");
+    expect(message).toContain("Only merger requires tenant-admin assignment");
+    expect(message).toContain("At pairing you may request observer, contributor, triager, reviewer or dispatcher");
   });
 
   it("can instead ask the agent to request access, without a key", () => {
