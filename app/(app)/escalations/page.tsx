@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { currentTenantIdFor } from "@/lib/tenant-context";
 import { listOwnerEscalations, type EscalationType } from "@/lib/agent-questions";
 import { LocalTime } from "@/components/local-time";
+import { escalationTypeLabel } from "@/lib/escalation-labels";
 import { EscalationTypeBadge, QuickResolveButtons, RedesignDecisionButtons, ApprovalDecisionButtons } from "./escalation-controls";
 
 export const metadata = { title: "Agent Escalations" };
@@ -21,7 +22,7 @@ type OwnerEscalation = {
   source: "question" | "redesign" | "approval";
   body: string;
   cleanBody: string;
-  escalationType: EscalationType;
+  escalationType: EscalationType | "Redesign";
   isWaiting: boolean;
   agentName: string;
   title?: string;
@@ -56,8 +57,7 @@ export default async function EscalationsPage({
   const filtered = rows.filter((item) => {
     if (statusFilter === "waiting" && !item.isWaiting) return false;
     if (statusFilter === "answered" && item.isWaiting) return false;
-    if (typeFilter === "Redesign" && item.source !== "redesign") return false;
-    if (typeFilter !== "all" && typeFilter !== "Redesign" && item.escalationType !== typeFilter) return false;
+    if (typeFilter !== "all" && item.escalationType !== typeFilter) return false;
     return true;
   });
 
@@ -128,7 +128,7 @@ export default async function EscalationsPage({
           </Link>
           {ALL_TYPES.map((t) => (
             <Link key={t} href={makeQuery(statusFilter, t)} className={typePill(typeFilter === t)}>
-              {t}
+              {escalationTypeLabel(t)}
             </Link>
           ))}
         </div>

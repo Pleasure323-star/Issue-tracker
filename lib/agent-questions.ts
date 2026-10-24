@@ -376,7 +376,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
     source: "question" | "redesign" | "approval";
     body: string;
     cleanBody: string;
-    escalationType: EscalationType;
+    escalationType: EscalationType | "Redesign";
     isWaiting: boolean;
     agentName: string;
     title?: string;
@@ -410,7 +410,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       source: "redesign",
       body: r.body,
       cleanBody: r.body,
-      escalationType: "Scope Expansion",
+      escalationType: "Redesign",
       title: r.title,
       authorized: isAdmin && userId !== r.authorAgent.ownerUserId,
       isWaiting: r.status === "proposed",

@@ -13,6 +13,7 @@ import {
   type AnswerActionResult,
 } from "./actions";
 import type { EscalationType } from "@/lib/agent-questions";
+import { escalationTypeLabel } from "@/lib/escalation-labels";
 
 export function EscalationTypeBadge({ type }: { type: EscalationType | string }) {
   const styles: Record<string, string> = {
@@ -41,7 +42,7 @@ export function EscalationTypeBadge({ type }: { type: EscalationType | string })
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeStyle}`}
     >
       <span aria-hidden="true">{icon}</span>
-      <span>{type}</span>
+      <span>{escalationTypeLabel(type)}</span>
     </span>
   );
 }
