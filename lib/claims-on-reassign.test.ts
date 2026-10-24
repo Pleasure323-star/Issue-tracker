@@ -8,7 +8,7 @@ import { releaseClaimsOnReassign } from "./claims-on-reassign";
 
 const tx = {
   issueClaim: { findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
-  bug: { update: vi.fn() },
+  bug: { updateMany: vi.fn() },
   bugActivity: { create: vi.fn() },
 };
 const db = tx as unknown as Prisma.TransactionClient;
@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   tx.issueClaim.findMany.mockResolvedValue([claim]);
   tx.issueClaim.count.mockResolvedValue(0);
+  tx.bug.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("changing the assignee releases an agent's claim (#658)", () => {
@@ -35,14 +36,23 @@ describe("changing the assignee releases an agent's claim (#658)", () => {
       bugId: "bug1",
       payload: expect.objectContaining({ claimId: "claim-1", beneficiaryUserId: "ada", reason: "reassigned" }),
     }));
-    expect(tx.bug.update).toHaveBeenCalledWith({ where: { id: "bug1" }, data: { status: "open" } });
+    expect(tx.bug.updateMany).toHaveBeenCalledWith({
+      where: { id: "bug1", status: "in_progress", assigneeId: null },
+      data: { status: "open" },
+    });
     expect(tx.bugActivity.create.mock.calls[0][0].data).toMatchObject({ type: "status_changed", metadata: { from: "in_progress", to: "open" } });
+  });
+
+  it("does not reopen or log when the issue changed since it was read (e.g. resolved meanwhile)", async () => {
+    tx.bug.updateMany.mockResolvedValue({ count: 0 });
+    expect(await releaseClaimsOnReassign(db, { ...base, assigneeId: null })).toEqual({ released: 1, reopened: false });
+    expect(tx.bugActivity.create).not.toHaveBeenCalled();
   });
 
   it("reassigning releases only claims held for someone else and keeps the issue in progress", async () => {
     expect(await releaseClaimsOnReassign(db, { ...base, assigneeId: "bob" })).toEqual({ released: 1, reopened: false });
     expect(tx.issueClaim.findMany.mock.calls[0][0].where).toMatchObject({ beneficiaryUserId: { not: "bob" } });
-    expect(tx.bug.update).not.toHaveBeenCalled();
+    expect(tx.bug.updateMany).not.toHaveBeenCalled();
   });
 
   it("does nothing when no claim is active", async () => {
@@ -55,13 +65,13 @@ describe("changing the assignee releases an agent's claim (#658)", () => {
   it("does not reopen while another claim or offer still holds the issue", async () => {
     tx.issueClaim.count.mockResolvedValue(1);
     expect(await releaseClaimsOnReassign(db, { ...base, assigneeId: null })).toEqual({ released: 1, reopened: false });
-    expect(tx.bug.update).not.toHaveBeenCalled();
+    expect(tx.bug.updateMany).not.toHaveBeenCalled();
   });
 
   it("leaves the status alone when the edit set one, or the issue is not in progress", async () => {
     await releaseClaimsOnReassign(db, { ...base, assigneeId: null, statusChanged: true });
     await releaseClaimsOnReassign(db, { ...base, assigneeId: null, status: "open" });
-    expect(tx.bug.update).not.toHaveBeenCalled();
+    expect(tx.bug.updateMany).not.toHaveBeenCalled();
     expect(tx.issueClaim.updateMany).toHaveBeenCalledTimes(2);
   });
 });

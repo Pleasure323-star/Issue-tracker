@@ -55,8 +55,13 @@ export async function releaseClaimsOnReassign(
   let reopened = false;
   if (!assigneeId && input.status === "in_progress" && !input.statusChanged) {
     const held = await tx.issueClaim.count({ where: { bugId, releasedAt: null, status: { in: ["offered", "active"] } } });
-    if (!held) {
-      await tx.bug.update({ where: { id: bugId }, data: { status: "open" } });
+    // `status` was read before the transaction, so check it again where it is
+    // written: a resolve that committed in between must not be undone.
+    const moved = held ? { count: 0 } : await tx.bug.updateMany({
+      where: { id: bugId, status: "in_progress", assigneeId: null },
+      data: { status: "open" },
+    });
+    if (moved.count) {
       await tx.bugActivity.create({
         data: {
           bugId,
