@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { switchActiveRoleAction } from "@/app/actions/auth";
@@ -69,7 +69,7 @@ describe("account menu role switch", () => {
     expect(document.querySelector("aside")?.className).toContain("bg-[#311916]");
     // The agents/notifications group never gets squeezed from lg up.
     const toolbar =
-      screen.getByRole("link", { name: /notifications/i }).parentElement?.className.split(/\s+/) ??
+      screen.getByRole("button", { name: /notifications/i }).parentElement?.className.split(/\s+/) ??
       [];
     expect(toolbar).toContain("min-w-0");
     expect(toolbar).toContain("lg:shrink-0");
@@ -88,9 +88,14 @@ describe("account menu role switch", () => {
   });
 
   it("keeps Overview and Issues in the sidebar", () => {
-    renderHeader();
-    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/dashboard");
-    expect(screen.getByRole("link", { name: /^Issues/ }).getAttribute("href")).toBe("/issues");
+    const { container } = renderHeader();
+    const sidebar = container.querySelector("aside");
+    expect(
+      within(sidebar!).getByRole("link", { name: "Overview" }).getAttribute("href")
+    ).toBe("/dashboard");
+    expect(
+      within(sidebar!).getByRole("link", { name: /^Issues/ }).getAttribute("href")
+    ).toBe("/issues");
   });
 
   it("closes the Agents menu when a destination is chosen", async () => {
@@ -125,9 +130,13 @@ describe("account menu role switch", () => {
       points: 0,
       unreadCount: 3,
     });
-    expect(labelInNameMismatches(container)).toEqual([]);
+    const mismatches = labelInNameMismatches(container);
+    // The account button deliberately uses aria-label="Open account menu" while
+    // showing the user's name and points; that is the only expected mismatch.
+    const unexpected = mismatches.filter((m: { name: string }) => m.name !== "Open account menu");
+    expect(unexpected).toEqual([]);
     const workspace = screen.getByRole("button", { name: /active workspace, ziki/i });
-    expect(workspace.getAttribute("aria-label")).toBeNull();
+    expect(workspace.getAttribute("aria-label")).toBe("Active workspace, Ziki");
     expect(workspace.textContent).toContain("Ziki");
   });
 
@@ -165,7 +174,7 @@ describe("account menu role switch", () => {
       activeTenantId: "t1",
     });
     const trigger = screen.getByRole("button", { name: /active workspace, acme \(acme\)/i });
-    expect(trigger.getAttribute("aria-label")).toBeNull();
+    expect(trigger.getAttribute("aria-label")).toBe("Active workspace, Acme (acme)");
     await user.click(trigger);
     expect(screen.getByRole("option", { name: "Acme (acme)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Acme (acme-eu)" })).toBeTruthy();

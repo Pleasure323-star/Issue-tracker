@@ -35,7 +35,7 @@ function useDismiss(
   open: boolean,
   close: () => void,
   containerRef: React.RefObject<HTMLElement | null>,
-  triggerRef: React.RefObject<HTMLElement | null>,
+  triggerRef?: React.RefObject<HTMLElement | null>,
 ) {
   useEffect(() => {
     if (!open) return;
@@ -45,7 +45,7 @@ function useDismiss(
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         close();
-        triggerRef.current?.focus();
+        triggerRef?.current?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointer);
@@ -74,6 +74,19 @@ function BellIcon() {
   );
 }
 
+function TrophyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" />
+      <path d="M10 14.7V17c0 .6-.5 1-1 1.2-1.2.5-2 2-2 3.8" />
+      <path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.5 2 2 2 3.8" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  );
+}
+
 function AgentIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -85,29 +98,24 @@ function AgentIcon() {
   );
 }
 
-const iconButton =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-zk-border bg-zk-surface text-zk-text hover:bg-zk-chip";
-
-function NotificationsBell({ unreadCount, active }: { unreadCount: number; active: boolean }) {
+function NotificationsBell({ unreadCount }: { unreadCount: number }) {
   const label = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
   return (
-    <Link
-      href="/notifications"
+    <button
+      type="button"
+      className="icon-button notifications-button inline-flex h-8 items-center justify-center rounded-full border border-zk-border bg-zk-surface px-2 text-zk-text hover:bg-zk-chip"
+      data-action="notifications"
       aria-label={label}
-      aria-current={active ? "page" : undefined}
-      title={label}
-      className={`relative ${iconButton} ${linkFocus} ${active ? "border-electric-blue" : ""}`}
     >
-      <BellIcon />
+      <span data-icon="bell" aria-hidden="true">
+        <BellIcon />
+      </span>
       {unreadCount > 0 ? (
-        <span
-          aria-hidden="true"
-          className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-zk-surface bg-electric-blue-strong px-1 text-[11px] font-bold text-white"
-        >
+        <span className="notification-count inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-zk-surface bg-electric-blue-strong px-1 text-[10px] font-bold text-white">
           {unreadCount > 99 ? "99+" : unreadCount}
         </span>
       ) : null}
-    </Link>
+    </button>
   );
 }
 
@@ -171,15 +179,16 @@ function HeaderWorkspaceSwitcher({
         <button
           ref={buttonRef}
           type="button"
+          data-action="workspace"
+          aria-label={`Active workspace, ${label}`}
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className={`inline-flex h-8 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
+          className={`workspace quiet inline-flex h-8 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
         >
-          <span className="sr-only">Active workspace, </span>
-          <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+          <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="truncate">{label}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" data-icon="chevron-down" aria-hidden="true">
             <path d="m6 9 6 6 6-6" />
           </svg>
         </button>
@@ -231,17 +240,18 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
       <button
         ref={buttonRef}
         type="button"
+        data-action="workspace"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls="agents-nav-menu"
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex h-10 items-center gap-2 rounded-full border border-zk-border bg-zk-surface px-4 text-sm font-semibold text-zk-text ${linkFocus}`}
+        className={`agents-menu button inline-flex h-8 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-zk-text hover:bg-zk-chip ${linkFocus}`}
       >
-        <span className="text-electric-blue">
+        <span data-icon="agent" aria-hidden="true">
           <AgentIcon />
         </span>
         Agents
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" data-icon="chevron-down" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
@@ -298,6 +308,30 @@ function AgentsMenu({ pathname, agents }: { pathname: string | null; agents: She
   );
 }
 
+function NavButton({
+  dataView,
+  href,
+  label,
+  pathname,
+}: {
+  dataView: string;
+  href: string;
+  label: string;
+  pathname: string | null;
+}) {
+  const active = isNavItemActive(pathname, href);
+  return (
+    <Link
+      href={href}
+      data-view={dataView}
+      aria-current={active ? "page" : undefined}
+      className={`inline-flex h-8 items-center justify-center rounded-full px-2 text-sm font-medium text-zk-text ${active ? "bg-zk-tint text-zk-accent" : "hover:bg-zk-chip hover:text-zk-text"}`}
+    >
+      {label}
+    </Link>
+  );
+}
+
 export function AppHeader({
   userName,
   userImage,
@@ -330,9 +364,8 @@ export function AppHeader({
   const pathname = usePathname();
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
-  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const closeAccount = () => setAccountOpen(false);
-  useDismiss(accountOpen, closeAccount, accountRef, accountButtonRef);
+  useDismiss(accountOpen, closeAccount, accountRef);
 
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
@@ -346,55 +379,58 @@ export function AppHeader({
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
   return (
-    // Sticky only from lg: on phones and tablets the toolbar wraps onto rows,
-    // and a header that tall pinned to the top covers the page under it.
-    <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
-      {/* Top bar: brand + workspace on the left, agents + notifications on the right. */}
-      <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard"
-            aria-label="Ziki"
-            className="flex items-center gap-1 text-[11px] text-zk-text"
-          >
-            <span
-              aria-hidden="true"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text"
-            >
-              z
-            </span>
-            <span className="truncate">ziki</span>
-          </Link>
-          <HeaderWorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
-        </div>
+    <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0 topbar">
+      <Link
+        href="/issues"
+        aria-label="Ziki issues"
+        className="brand inline-flex items-center gap-1 text-sm font-semibold text-zk-text"
+      >
+        <span className="brand-mark inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text" aria-hidden="true">
+          z
+        </span>
+        <span>ziki</span>
+      </Link>
 
-        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 lg:shrink-0">
-          <AgentsMenu pathname={pathname} agents={agents} />
-          <NotificationsBell unreadCount={unreadCount} active={isNavItemActive(pathname, "/notifications")} />
-        </div>
-      </div>
+      <span className="top-divider hidden h-4 w-px bg-zk-border lg:block" aria-hidden="true" />
 
-      {/* User chip — avatar, name, points and the account menu. */}
-      <div className="flex items-center gap-3 px-4 pb-3 sm:px-6">
+      <HeaderWorkspaceSwitcher workspaces={workspaces} activeTenantId={activeTenantId} />
+
+      <nav className="top-nav flex items-center gap-2 px-2" aria-label="Main navigation">
+        <span className="nav-indicator hidden h-4 w-px bg-zk-border lg:block" aria-hidden="true" />
+        <NavButton dataView="overview" href="/dashboard" label="Overview" pathname={pathname} />
+        <NavButton dataView="issues" href="/issues" label="Issues" pathname={pathname} />
+        <NavButton dataView="agents" href="/settings/agents" label="Agents" pathname={pathname} />
+        <NavButton dataView="team" href="/settings/team" label="Team" pathname={pathname} />
+      </nav>
+
+      <div className="account-controls flex min-w-0 items-center gap-2 sm:gap-3 lg:shrink-0 ml-auto">
+        <AgentsMenu pathname={pathname} agents={agents} />
+        <NotificationsBell unreadCount={unreadCount} />
         <div ref={accountRef} className="relative">
           <button
-            ref={accountButtonRef}
             type="button"
+            className="account-button inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+            data-action="account"
+            aria-label="Open account menu"
             aria-haspopup="menu"
             aria-expanded={accountOpen}
             aria-controls="account-menu"
             onClick={() => setAccountOpen((open) => !open)}
-            className={`inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip ${linkFocus}`}
           >
             <span className="sr-only">Account menu for {userName}</span>
-            <Avatar name={userName} image={userImage} size="sm" variant="solid" />
-            <span className="truncate font-semibold text-zk-text">{userName}</span>
+            <span className="avatar neutral inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text">
+              {initialsOf(userName)}
+            </span>
+            <span className="account-name truncate font-semibold text-zk-text">{userName}</span>
             {userId && points > 0 ? (
-              <span className="rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
+              <span className="points rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
+                <span data-icon="trophy" aria-hidden="true">
+                  <TrophyIcon />
+                </span>
                 {points} pts
               </span>
             ) : null}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" data-icon="chevron-down" aria-hidden="true">
               <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
             </svg>
           </button>
