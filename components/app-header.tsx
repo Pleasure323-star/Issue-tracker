@@ -26,10 +26,6 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
 
   const selected = workspaces.find((workspace) => workspace.id === activeTenantId) ?? workspaces[0];
 
-  if (!selected) {
-    return null;
-  }
-
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -38,23 +34,21 @@ function WorkspaceMenu({ workspaces, activeTenantId }: { workspaces: WorkspaceCh
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
+        className="workspace quiet inline-flex items-center gap-1.5 rounded-full border border-zk-border bg-zk-surface px-2.5 py-1 text-sm text-zk-text hover:bg-zk-chip"
       >
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zk-chip text-xs font-bold text-zk-text">
-          {selected.name.charAt(0).toUpperCase()}
-        </span>
-        <span className="truncate font-semibold text-zk-text">{selected.name}</span>
+        <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+        <span className="truncate font-semibold text-zk-text">{selected?.name ?? "Workspace"}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      {open ? (
+      {open && workspaces.length > 0 ? (
         <div
           role="menu"
           className="absolute right-0 top-full mt-1 z-50 flex w-[260px] flex-col gap-0.5 rounded-xl border border-zk-border bg-zk-surface p-2 shadow-[0_24px_56px_rgba(11,23,51,0.22)]"
         >
           {workspaces.map((workspace) => {
-            const current = workspace.id === selected.id;
+            const current = workspace.id === activeTenantId;
             return (
               <Link
                 key={workspace.id}
@@ -221,11 +215,11 @@ export function AppHeader({
     // Single row: brand + workspace switcher | agents + notifications + account.
     <header className="relative z-40 min-h-[66px] border-b border-zk-border bg-zk-surface lg:sticky lg:top-0">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6 border-b border-zk-border">
-        {/* Brand: ziki logo mark */}
+        {/* Brand: ziki logo */}
         <Link
           href="/dashboard"
-          aria-label="Ziki"
-          className="flex items-center gap-1"
+          aria-label="Ziki issues"
+          className="flex items-center gap-1 text-sm font-semibold text-zk-text"
         >
           <Image
             src="/ziki-logo.png"
@@ -237,7 +231,7 @@ export function AppHeader({
           />
         </Link>
 
-        {/* Workspace dropdown (matches AgentsMenu styling). */}
+        {/* Workspace dropdown */}
         <WorkspaceMenu workspaces={workspaces} activeTenantId={activeTenantId} />
 
         {/* Spacer pushes agents/notifications/account to the right. */}
@@ -266,7 +260,7 @@ export function AppHeader({
                 <span className="ml-1">{points} pts</span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+                <path d={accountOpen ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6" />}
               </svg>
             </button>
 
