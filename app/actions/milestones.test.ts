@@ -135,4 +135,38 @@ describe("milestone actions (#289)", () => {
     expect((await deleteMilestoneAction("m1")).error).toMatch(/no longer exists/);
     expect(tx.bugActivity.createMany).not.toHaveBeenCalled();
   });
+
+  describe("a Serializable write conflict (P2034, #601)", () => {
+    const conflict = () => Object.assign(new Error("Transaction failed due to a write conflict"), { code: "P2034" });
+
+    it("retries and succeeds once the conflict clears", async () => {
+      vi.mocked(prisma.$transaction).mockRejectedValueOnce(conflict());
+      expect(await deleteMilestoneAction("m1")).toEqual({ ok: true, cleared: 2 });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(revalidatePath).toHaveBeenCalled();
+    });
+
+    it("answers that the milestone is gone when the other delete won", async () => {
+      vi.mocked(prisma.$transaction).mockRejectedValueOnce(conflict());
+      tx.milestone.findFirst.mockResolvedValue(null);
+      expect((await deleteMilestoneAction("m1")).error).toMatch(/no longer exists/);
+    });
+
+    it("returns a friendly error instead of throwing when it keeps conflicting", async () => {
+      vi.mocked(prisma.$transaction)
+        .mockRejectedValueOnce(conflict())
+        .mockRejectedValueOnce(conflict())
+        .mockRejectedValueOnce(conflict());
+      const result = await deleteMilestoneAction("m1");
+      expect(result.error).toMatch(/at the same time/);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(revalidatePath).not.toHaveBeenCalled();
+    });
+
+    it("still rethrows other errors without retrying", async () => {
+      vi.mocked(prisma.$transaction).mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "P1001" }));
+      await expect(deleteMilestoneAction("m1")).rejects.toThrow("boom");
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+  });
 });

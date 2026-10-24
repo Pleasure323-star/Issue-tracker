@@ -9,6 +9,8 @@ import { milestoneScopeFor } from "@/lib/milestone-stats";
 export type MilestoneActionResult = { ok?: true; error?: string; cleared?: number };
 
 const NOT_FOUND = "That milestone no longer exists.";
+const DELETE_CONFLICT = "Someone changed this milestone at the same time. Reload and try again.";
+const DELETE_ATTEMPTS = 3;
 
 function isCode(err: unknown, code: string): boolean {
   return typeof err === "object" && err !== null && "code" in err && err.code === code;
@@ -120,34 +122,41 @@ export async function deleteMilestoneAction(id: string): Promise<MilestoneAction
   const scope = await milestoneScopeFor(user);
   if (!scope.ok) return { error: scope.error };
 
-  let cleared: number;
-  try {
-    cleared = await prisma.$transaction(async (tx) => {
-      const milestone = await tx.milestone.findFirst({
-        where: { id, tenantId: scope.tenantId },
-        select: { title: true, bugs: { select: { id: true } } },
+  const remove = () => prisma.$transaction(async (tx) => {
+    const milestone = await tx.milestone.findFirst({
+      where: { id, tenantId: scope.tenantId },
+      select: { title: true, bugs: { select: { id: true } } },
+    });
+    if (!milestone) {
+      throw Object.assign(new Error(NOT_FOUND), { code: "P2025" });
+    }
+    if (milestone.bugs.length) {
+      await tx.bugActivity.createMany({
+        data: milestone.bugs.map((bug) => ({
+          bugId: bug.id,
+          actorId: user.id,
+          type: "milestone_changed",
+          summary: `removed this from milestone "${milestone.title}"`,
+          metadata: { field: "milestone", from: milestone.title, to: null },
+        })),
       });
-      if (!milestone) {
-        throw Object.assign(new Error(NOT_FOUND), { code: "P2025" });
-      }
-      if (milestone.bugs.length) {
-        await tx.bugActivity.createMany({
-          data: milestone.bugs.map((bug) => ({
-            bugId: bug.id,
-            actorId: user.id,
-            type: "milestone_changed",
-            summary: `removed this from milestone "${milestone.title}"`,
-            metadata: { field: "milestone", from: milestone.title, to: null },
-          })),
-        });
-      }
-      await tx.milestone.delete({ where: { id } });
-      return milestone.bugs.length;
-    }, { isolationLevel: "Serializable" });
-  } catch (err) {
-    if (isCode(err, "P2025")) return { error: NOT_FOUND };
-    throw err;
+    }
+    await tx.milestone.delete({ where: { id } });
+    return milestone.bugs.length;
+  }, { isolationLevel: "Serializable" });
+
+  // #601: Serializable aborts one side of a concurrent write with P2034, which
+  // Prisma does not retry. Retry a few times; a retry after another delete won
+  // finds the milestone gone and answers NOT_FOUND.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const cleared = await remove();
+      revalidateMilestones();
+      return { ok: true, cleared };
+    } catch (err) {
+      if (isCode(err, "P2025")) return { error: NOT_FOUND };
+      if (!isCode(err, "P2034")) throw err;
+      if (attempt >= DELETE_ATTEMPTS) return { error: DELETE_CONFLICT };
+    }
   }
-  revalidateMilestones();
-  return { ok: true, cleared };
 }
