@@ -2,16 +2,22 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { requireUser } from "@/lib/auth-helpers";
 import { isLinkPreviewBot } from "@/lib/link-preview";
+import { AppHeader } from "@/components/app-header";
 import { AppSidebar } from "@/components/app-sidebar";
+import { getUnreadCount } from "@/lib/lookups";
+import { REPORT_FORM_URL } from "@/lib/report-form";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/skip-link";
 import { PAGE_CONTAINER_CLASS } from "@/components/page-container";
 import { FocusMainOnNavigate } from "@/components/focus-main-on-navigate";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
-import { isAdmin } from "@/lib/roles";
+import { isAdmin, type AppRole } from "@/lib/roles";
+import type { WorkspaceChoice } from "@/components/workspace-switcher";
 import { prisma } from "@/lib/prisma";
 import { currentTenantIdFor } from "@/lib/tenant-context";
+import { tenantsForUser } from "@/lib/tenants";
 import { countPendingEscalations } from "@/lib/agent-questions";
 import { loadSidebarCounts } from "@/lib/dashboard-overview";
+import { pointTotals } from "@/lib/points/leaderboard";
 
 export default async function AppLayout({
   children,
@@ -39,20 +45,45 @@ export default async function AppLayout({
   }
 
   const user = await requireUser();
-
-  let pendingEscalationsCount = 0;
-  let issueCount = 0;
+  // The header lists this person's workspaces. Pages still resolve the active
+  // project inside the current workspace, so a foreign project id is ignored.
+  let workspaces: WorkspaceChoice[] = [];
+  let activeTenantId: string | null = null;
   let tenantId: string | null = null;
   try {
     tenantId = await currentTenantIdFor(user.id);
+    activeTenantId = tenantId;
+    const memberships = await tenantsForUser(prisma, user.id);
+    workspaces = memberships
+      .filter((tenant) => tenant.archivedAt === null)
+      .map((tenant) => ({ id: tenant.id, name: tenant.name, slug: tenant.slug }));
   } catch (error) {
-    console.error("[layout] tenant context failed", error);
+    console.error("[layout] workspace context failed", error);
   }
+  // A missing Notification table must not take down every signed-in page.
+  let unreadCount = 0;
+  try {
+    // Cached per user and expired by every write that changes it (#317), so
+    // ordinary navigation doesn't pay for a count query.
+    unreadCount = await getUnreadCount(user.id);
+  } catch (error) {
+    console.error("[layout] notification count failed", error);
+  }
+
+  let pendingEscalationsCount = 0;
+  let issueCount = 0;
+  let points = 0;
   if (tenantId) {
     try {
       pendingEscalationsCount = await countPendingEscalations(user.id, tenantId);
     } catch (error) {
       console.error("[layout] pending escalations count failed", error);
+    }
+    try {
+      const totals = await pointTotals(prisma, tenantId, user.id);
+      points = totals.points;
+    } catch (error) {
+      console.error("[layout] points failed", error);
     }
     try {
       issueCount = (await loadSidebarCounts({ userId: user.id, tenantId })).unresolved;
@@ -81,6 +112,19 @@ export default async function AppLayout({
         pendingEscalationsCount={pendingEscalationsCount}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+        <AppHeader
+          userName={user.name ?? user.email}
+          userImage={user.image}
+          role={user.role as AppRole}
+          isRealSuperAdmin={user.isRealSuperAdmin}
+          isRealAdmin={user.isRealAdmin}
+          userId={user.id}
+          workspaces={workspaces}
+          activeTenantId={activeTenantId}
+          points={points}
+          unreadCount={unreadCount}
+          reportFormUrl={REPORT_FORM_URL}
+        />
         <main
           id={MAIN_CONTENT_ID}
           /* Focusable so the skip link and the route announcer can move focus
