@@ -40,6 +40,8 @@ vi.mock("@/lib/issue-stage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/issue-stage")>()),
   openIssueStages: vi.fn(async () => new Map([["bug-1", "reported"]])),
 }));
+
+import { openIssueStages } from "@/lib/issue-stage";
 vi.mock("@/lib/voter-summaries", () => ({
   fetchVoterSummaries: vi.fn(async () =>
     new Map([
@@ -198,6 +200,31 @@ describe("issue list layout", () => {
       );
     });
     expect(stagedResolvedCounts.length).toBeGreaterThan(0);
+  });
+
+  it("derives stage ids and tab badges without the selected platform clause (#626 review)", async () => {
+    await renderList({ stage: "reported", platform: "web" });
+
+    // The stage lookup runs on the platform-free snapshot: stage ids must
+    // cover every platform, or the other badges and "All" would read zero.
+    const stageLookup = vi.mocked(openIssueStages).mock.calls.at(-1)?.[0] as
+      | { where?: Record<string, unknown> }
+      | undefined;
+    expect(stageLookup?.where).toBeTruthy();
+    expect(stageLookup?.where).not.toHaveProperty("categoryId");
+
+    // The result list itself stays restricted to the selected platform.
+    const listQuery = findMany.mock.calls.at(-1)![0];
+    expect(listQuery.where.id).toEqual({ in: ["bug-1"] });
+    expect(listQuery.where.categoryId).toBe("cat-web");
+
+    // The tab snapshot shares the stage ids but drops the platform clause,
+    // so each tab badge counts its whole stage.
+    const tabGroup = groupBy.mock.calls.find(
+      ([args]) => Array.isArray((args?.where as { id?: { in?: unknown[] } })?.id?.in),
+    );
+    expect(tabGroup).toBeTruthy();
+    expect(tabGroup?.[0].where).not.toHaveProperty("categoryId");
   });
 
   it("is one centred list column without the stats card (#1056)", async () => {

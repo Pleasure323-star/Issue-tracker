@@ -280,6 +280,7 @@ export default async function BugsPage({
     if (asNumber !== null) where.OR.push({ number: asNumber });
   }
 
+  let membershipEmpty = false;
   let totalCount = 0;
   try {
     totalCount = await prisma.bug.count({ where });
@@ -293,6 +294,7 @@ export default async function BugsPage({
         delete where.tenantId;
         delete where.projectId;
         where.id = { in: [] };
+        membershipEmpty = true;
       }
     } else if (missingColumn) {
       // #506: never retry without the tenant filter. That used to show every
@@ -306,17 +308,28 @@ export default async function BugsPage({
     }
   }
 
+  // #1055: every tab counts what the other filters match, whatever platform
+  // is picked, so switching tabs never surprises. Snapshot the platform-free
+  // where BEFORE the stage lookup (#626): the stage ids must not inherit the
+  // selected platform, or the other-platform badges and "All" would read zero
+  // while matching issues exist.
+  const { categoryId: _platformClause, ...platformTabWhere } = where;
+  void _platformClause;
+
   const stageView = isDeletedView ? null : parseIssueStageView(toSingleQueryParam(params.stage));
   let stages = new Map<string, IssueStage>();
-  if (!isDeletedView) {
+  if (!isDeletedView && !membershipEmpty) {
     try {
-      stages = await openIssueStages(prisma, where);
+      stages = await openIssueStages(prisma, platformTabWhere);
     } catch (error) {
       console.error("[bugs] issue stage lookup failed", error);
     }
     if (stageView) {
       const ids = [...stages.entries()].filter(([, stage]) => stage === stageView).map(([id]) => id);
+      // The result list keeps its platform clause; the tab snapshot shares the
+      // same stage rows without one, so every badge counts its whole stage.
       where.id = { in: ids };
+      platformTabWhere.id = { in: ids };
       try {
         totalCount = await prisma.bug.count({ where });
       } catch (error) {
@@ -325,13 +338,6 @@ export default async function BugsPage({
       }
     }
   }
-  // #1055: every tab counts what the other filters match, whatever platform
-  // is picked, so switching tabs never surprises. The snapshot is taken after
-  // the stage clause is applied (#626): a ?stage= page must count the same
-  // rows its result list shows — tabs, badges and the "Show N resolved" link
-  // all follow the stage filter, not the pre-stage row set.
-  const { categoryId: _platformClause, ...platformTabWhere } = where;
-  void _platformClause;
 
   const isResolvedView = statusParam === "resolved";
 
