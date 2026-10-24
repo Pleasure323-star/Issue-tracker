@@ -24,6 +24,7 @@ type OwnerEscalation = {
   escalationType: EscalationType;
   isWaiting: boolean;
   agentName: string;
+  title?: string;
   createdAt: Date;
   answeredAt?: Date | null;
   answer?: string | null;
@@ -54,7 +55,8 @@ export default async function EscalationsPage({
   const filtered = rows.filter((item) => {
     if (statusFilter === "waiting" && !item.isWaiting) return false;
     if (statusFilter === "answered" && item.isWaiting) return false;
-    if (typeFilter !== "all" && item.escalationType !== typeFilter) return false;
+    if (typeFilter === "Redesign" && item.source !== "redesign") return false;
+    if (typeFilter !== "all" && typeFilter !== "Redesign" && item.escalationType !== typeFilter) return false;
     return true;
   });
 

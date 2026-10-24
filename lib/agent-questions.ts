@@ -263,33 +263,57 @@ export async function countPendingEscalations(userId: string, tenantId: string):
 }
 
 /** Pending redesign proposals needing a decision, for the onBehalfOf user (#432).
- * Only tenant admins can decide redesigns (see decideRedesign in lib/redesigns.ts).
+ * Tenant admins see all proposals; non-admin beneficiaries see only their own.
+ * Derives isWaiting from status so decided items appear correctly in Pending,
+ * Resolved, and All views. Proposed items are fetched without a limit; the
+ * 100-item cap applies only to historical (decided) items.
  */
 export async function listOwnerPendingRedesigns(userId: string, tenantId: string) {
   const member = await prisma.membership.findUnique({
     where: { tenantId_userId: { tenantId, userId } },
     select: { role: true },
   });
-  if (!member || !isTenantAdminRole(member.role)) return [];
+  if (!member) return [];
+  const isAdmin = isTenantAdminRole(member.role);
 
-  return prisma.redesignProposal.findMany({
-    where: {
-      onBehalfOfUserId: userId,
-      tenantId,
-      status: { in: ["proposed", "approved", "rejected", "superseded"] },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    select: {
-      id: true,
-      title: true,
-      body: true,
-      status: true,
-      createdAt: true,
-      bug: { select: { id: true, title: true } },
-      authorAgent: { select: { id: true, name: true } },
-    },
-  });
+  const baseWhere = {
+    tenantId,
+    ...(isAdmin ? {} : { onBehalfOfUserId: userId }),
+  };
+
+  const [proposed, historical] = await Promise.all([
+    prisma.redesignProposal.findMany({
+      where: { ...baseWhere, status: "proposed" },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        status: true,
+        createdAt: true,
+        bug: { select: { id: true, title: true } },
+        authorAgent: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.redesignProposal.findMany({
+      where: { ...baseWhere, status: { in: ["approved", "rejected", "superseded"] } },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        status: true,
+        createdAt: true,
+        bug: { select: { id: true, title: true } },
+        authorAgent: { select: { id: true, name: true } },
+      },
+    }),
+  ]);
+
+  return [...proposed, ...historical].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+  );
 }
 
 /** Pending issue approvals needing a decision (#432).
@@ -337,6 +361,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
     escalationType: EscalationType;
     isWaiting: boolean;
     agentName: string;
+    title?: string;
     createdAt: Date;
     answeredAt?: Date | null;
     answer?: string | null;
@@ -367,6 +392,7 @@ export async function listOwnerEscalations(userId: string, tenantId: string) {
       body: r.body,
       cleanBody: r.body,
       escalationType: "Scope Expansion",
+      title: r.title,
       isWaiting: r.status === "proposed",
       agentName: r.authorAgent.name,
       createdAt: r.createdAt,

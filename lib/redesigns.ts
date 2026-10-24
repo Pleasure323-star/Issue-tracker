@@ -20,16 +20,22 @@ export const redesignDecisionSchema = z.object({ decision: z.enum(["approved", "
 export async function proposeRedesign(agent: AgentContext, input: z.infer<typeof redesignSchema>) {
   // #412: a project-scoped key may only propose in its own project.
   assertKeyProject(agent, input.projectId);
-  let onBehalfOfUserId = input.onBehalfOfUserId;
-  if (!onBehalfOfUserId) {
-    // Route proposals without a beneficiary to a tenant admin eligible to
-    // decide under decideRedesign, rather than the author agent's owner.
-    const admin = await prisma.membership.findFirst({
-      where: { tenantId: agent.tenantId, role: { in: ["owner", "admin"] } },
-      select: { userId: true },
-    });
-    if (!admin) throw new IssueApiError(422, "No tenant admin available to decide this redesign.");
-    onBehalfOfUserId = admin.userId;
+  // Keep onBehalfOfUserId as the author's owner for attachment-ownership
+  // matching; decision-recipient selection is separate and handled at decision
+  // time by decideRedesign (tenant admin, not the author's owner).
+  const onBehalfOfUserId = input.onBehalfOfUserId ?? agent.ownerId;
+  // Validate that an eligible decision-maker exists (tenant admin who is not
+  // the author's owner); refuse to create an undecidable proposal.
+  const eligibleDecider = await prisma.membership.findFirst({
+    where: {
+      tenantId: agent.tenantId,
+      role: { in: ["owner", "admin"] },
+      userId: { not: agent.ownerId },
+    },
+    select: { userId: true },
+  });
+  if (!eligibleDecider) {
+    throw new IssueApiError(422, "No eligible decision-maker available for this redesign.");
   }
   const proposal = await prisma.$transaction(async (tx) => {
     const project = await tx.project.findFirst({ where: { id: input.projectId, tenantId: agent.tenantId }, select: { id: true } });
