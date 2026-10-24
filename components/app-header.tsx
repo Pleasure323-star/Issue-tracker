@@ -259,7 +259,7 @@ export function AppHeader({
               <span className="truncate font-semibold text-zk-text">{userName}</span>
               <span className="inline-flex items-center rounded-full bg-zk-warn-bg px-2 py-0.5 text-xs font-bold text-zk-warn-fg">
                 <span data-icon="trophy" aria-hidden="true" className="flex items-center shrink-0">
-                  <span className="h-3 w-3">
+                  <span className="h-3 w-3 flex items-center">
                     <TrophyIcon />
                   </span>
                 </span>
