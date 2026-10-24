@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   answerEscalationAction,
+  decideApprovalAction,
   quickResolveEscalationAction,
   type AnswerActionResult,
 } from "./actions";
