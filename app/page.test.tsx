@@ -23,19 +23,31 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 describe("Public homepage", () => {
   it("explains the complete workflow and labels sample activity", () => {
     render(<Homepage />);
-    expect(screen.getByRole("heading", { level: 1 }).getAttribute("aria-label")).toBe("Move every issue forward with your agents");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "AI-Powered Issue Tracker built for Teams and their Agents",
+    );
     for (const name of ["Report", "Confirm", "Authorize", "Deliver", "Prove", "Merge"]) {
       expect(screen.getByRole("heading", { name })).toBeTruthy();
     }
-    expect(screen.getByText("Illustrative workflow")).toBeTruthy();
-    expect(screen.getByText(/Illustrative rewards/)).toBeTruthy();
+    expect(screen.getByRole("img", { name: /^Illustrative owner consultation/ })).toBeTruthy();
+    expect(screen.getByText(/Illustrative · project rules vary/)).toBeTruthy();
   });
   it("keeps conversion links on the existing sign-in route", () => {
     render(<Homepage />);
-    for (const label of ["Get started free", "Get started with Ziki", "Start contributing"]) {
-      expect(screen.getByRole("link", { name: new RegExp(label) }).getAttribute("href")).toBe("/login");
-    }
+    expect(screen.getByRole("link", { name: "Get started" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: /Start contributing/ }).getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Skip to content" }).getAttribute("href")).toBe("#main-content");
+  });
+  it("sends the work email boxes to sign-in with the email prefilled", () => {
+    const { container } = render(<Homepage />);
+    const forms = container.querySelectorAll("form.email-start");
+    expect(forms).toHaveLength(2);
+    for (const form of forms) {
+      expect(form.getAttribute("action")).toBe("/login");
+      expect(form.getAttribute("method")).toBe("get");
+      expect(within(form as HTMLElement).getByRole("textbox", { name: "Work email" }).getAttribute("name")).toBe("email");
+      expect(within(form as HTMLElement).getByRole("button", { name: "Get started" })).toBeTruthy();
+    }
   });
   it("opens the mobile menu and closes it on Escape or section selection", () => {
     render(<Homepage />);
@@ -52,22 +64,29 @@ describe("Public homepage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
     expect(applyTheme).toHaveBeenCalledWith("dark");
   });
-  it("uses Get started as the single authentication entry point in each header layout", () => {
+  it("offers Sign in and Get started in the header, both on the sign-in route", () => {
     render(<Homepage />);
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
+    expect(within(banner).getByRole("link", { name: "Get started" }).getAttribute("href")).toBe("/login");
+    // The menu holds the page sections; the auth buttons stay visible beside it.
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
-    expect(within(navigation).getByRole("link", { name: "Get started" }).getAttribute("href")).toBe("/login");
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    fireEvent.click(within(navigation).getByRole("link", { name: "Get started" }));
-    expect(screen.getByRole("button", { name: "Open menu" }).getAttribute("aria-expanded")).toBe("false");
+    expect(within(navigation).queryByRole("link", { name: "Get started" })).toBeNull();
   });
-  it("simplifies the hero without removing its accessible headline or animated circle", () => {
+  it("keeps the hero's side cards decorative and its headline readable as text", () => {
     const { container } = render(<Homepage />);
-    expect(screen.queryByText(/Agent activity preview/i)).toBeNull();
-    const circle = container.querySelector(".switch-pulse");
-    expect(circle).not.toBeNull();
-    expect(circle?.querySelector("svg")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1 }).getAttribute("aria-label")).toContain("forward");
+    const sides = container.querySelectorAll(".hero-side");
+    expect(sides).toHaveLength(2);
+    for (const side of sides) expect(side.getAttribute("aria-hidden")).toBe("true");
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.getAttribute("aria-label")).toBeNull();
+    expect(heading.textContent).toContain("built for Teams and their Agents");
+  });
+  it("swaps the email boxes for a way into the app when signed in", () => {
+    const { container } = render(<Homepage signedIn />);
+    expect(container.querySelector("form.email-start")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Go to issues" }).getAttribute("href")).toBe("/issues");
   });
   it("saves a signed-in theme through the account preference", () => {
     const setTheme = vi.fn();

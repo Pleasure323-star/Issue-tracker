@@ -22,10 +22,14 @@ export default async function LoginPage({
     callbackUrl?: string;
     expired?: string;
     error?: string;
+    email?: string;
   }>;
 }) {
   const params = await searchParams;
   const callbackUrl = safeCallbackUrl(params.callbackUrl);
+  // From the homepage email box: prefill only, and only something email-shaped.
+  const rawEmail = typeof params.email === "string" ? params.email.trim() : "";
+  const defaultEmail = rawEmail.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail) ? rawEmail : "";
   const googleConfigured = isGoogleOAuthConfigured();
   const passwordEnabled = isPasswordAuthEnabled();
 
@@ -67,7 +71,7 @@ export default async function LoginPage({
         ) : null}
 
         {passwordEnabled ? (
-          <LoginForm callbackUrl={callbackUrl} googleEnabled={googleConfigured} />
+          <LoginForm callbackUrl={callbackUrl} googleEnabled={googleConfigured} defaultEmail={defaultEmail} />
         ) : googleConfigured ? (
           <GoogleSignInButton callbackUrl={callbackUrl} />
         ) : (

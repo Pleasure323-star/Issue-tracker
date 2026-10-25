@@ -15,13 +15,16 @@ const fieldClass =
 export function LoginForm({
   callbackUrl = "/dashboard",
   googleEnabled = false,
+  defaultEmail = "",
 }: {
   callbackUrl?: string;
   googleEnabled?: boolean;
+  /** Prefilled from the homepage's "Enter your work email" box. */
+  defaultEmail?: string;
 }) {
   // Only show Google button if OAuth is actually configured
   const showGoogleButton = googleEnabled;
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(defaultEmail);
   const [password, setPassword] = useState("");
   // Set once the password was right and the account has two-factor on (#648).
   const [needsCode, setNeedsCode] = useState(false);
