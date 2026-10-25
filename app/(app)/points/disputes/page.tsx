@@ -12,7 +12,6 @@ import {
   type DisputeView,
 } from "@/lib/points/disputes";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/local-time";
 import { DisputeControls } from "./dispute-controls";
 import { CreditAwardsForm } from "./credit-awards-form";
@@ -109,10 +108,11 @@ export default async function PointsDisputesPage() {
             deleted — a correction is a reversing entry.
           </p>
         </div>
-        <Link href="/points/disputes/new">
-          <Button type="button" className="px-3 py-1.5 text-xs">
-            Open a dispute
-          </Button>
+        <Link
+          href="/points/disputes/new"
+          className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-teal-700 text-white hover:bg-teal-800 focus-visible:ring-teal-600"
+        >
+          Open a dispute
         </Link>
       </div>
 
@@ -189,10 +189,12 @@ export default async function PointsDisputesPage() {
                 {entry.correctedAt ? (
                   <Badge className="rounded-full bg-zk-warn-bg text-zk-warn-fg">Corrected</Badge>
                 ) : (
-                  <Link href={`/points/disputes/new?entry=${entry.id}${entry.bugNumber !== null ? `&bug=${entry.bugNumber}` : ""}`}>
-                    <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs">
-                      Dispute
-                    </Button>
+                  <Link
+                    href={`/points/disputes/new?entry=${entry.id}${entry.bugNumber !== null ? `&bug=${entry.bugNumber}` : ""}`}
+                    className="inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-card text-slate-800 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400"
+                    aria-label={`Dispute entry for ${entry.bugNumber !== null ? `issue #${entry.bugNumber}` : "unlinked entry"} (${entry.points > 0 ? "+" : ""}${entry.points} pts, ${entry.role})`}
+                  >
+                    Dispute
                   </Link>
                 )}
               </li>
