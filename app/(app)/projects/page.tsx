@@ -115,6 +115,14 @@ export default async function ProjectsPage({
         </p>
       </div>
 
+      <Link
+        href="/projects/decision-room-demo"
+        className="block rounded-[20px] border border-zk-border bg-zk-tint p-4 text-sm text-zk-text hover:border-electric-blue sm:p-5"
+      >
+        <span className="block font-bold">Preview the goal decision room →</span>
+        <span className="mt-1 block text-xs text-zk-text2">An interactive concept for owner decisions and agent-assisted project updates. Uses example data.</span>
+      </Link>
+
       {error ? (
         <p className="rounded-[14px] border border-zk-bad-bd bg-zk-bad-bg px-3 py-2 text-sm text-zk-bad-fg">
           {error}
