@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<P
           bugId: bug.id,
           title: bug.title,
           description: bug.description,
-          editedById: agent.ownerUserId,
+          editedById: agent.ownerId,
         },
       });
 

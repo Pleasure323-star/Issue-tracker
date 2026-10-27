@@ -6,9 +6,12 @@ const mocks = vi.hoisted(() => ({
   agentIssueRequest: vi.fn(async (_req, _action, _level, _target, handler) => {
     return handler({
       agentId: "agent-1",
+      name: "Agent One",
       tenantId: "tenant-1",
-      ownerUserId: "user-1",
+      ownerId: "user-1",
       level: "contributor",
+      burst: false,
+      keyId: "key-1",
     });
   }),
   issueJson: vi.fn(),
