@@ -26,6 +26,7 @@ import {
   type GitHubClient,
 } from "@/lib/github/merge-pr";
 import { recordMistake, type RecordMistakeInput } from "@/lib/agent-api/mistakes";
+import { notifyMergeFailed } from "@/lib/agent-notifications";
 
 /**
  * A merger accepting a fix (#434). The gate: the issue is confirmed, no
@@ -43,6 +44,7 @@ import { recordMistake, type RecordMistakeInput } from "@/lib/agent-api/mistakes
 
 const mergeBugSelect = {
   id: true,
+  title: true,
   tenantId: true,
   projectId: true,
   pullRequestUrl: true,
@@ -81,6 +83,7 @@ export type AcceptFixResult =
       accepted: boolean;
       readyToMerge?: boolean;
       merged?: boolean;
+      mergeCommitSha?: string;
       solverUserId?: string | null;
       rewardedReviewerUserIds?: string[];
       notes?: string;
@@ -90,7 +93,7 @@ export type AcceptFixResult =
   | {
       status: 409;
       error: "not_ready";
-      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts" | "claim" | "pull_request" | "deployment_verification";
+      missing: "already_accepted" | "redesign" | "confirmation" | "verdicts" | "claim" | "pull_request" | "deployment_verification" | "github_merge_failed";
       message: string;
     };
 
@@ -377,24 +380,119 @@ export async function acceptFix(
     }
 
     // Admin merger role: Finalizes resolution, awards points, and releases claim
-    if (ref && acceptedHeadSha) {
-      const hasAppConfig = Boolean(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY);
-      const ghClient = deps.client ?? (hasAppConfig ? clientForInstallation(bug.project?.githubInstallationId) : null);
-      if (ghClient) {
-        let green = false;
+    // Must strictly verify GitHub state and execute the merge BEFORE resolving or disbursing points.
+    if (!ref) {
+      return {
+        status: 409 as const,
+        error: "not_ready" as const,
+        missing: "pull_request" as const,
+        message: "No pull request is linked to this issue.",
+      };
+    }
+
+    const hasAppConfig = Boolean(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY);
+    const ghClient = deps.client ?? (hasAppConfig ? clientForInstallation(bug.project?.githubInstallationId) : null);
+
+    let mergeCommitSha: string | null = acceptedHeadSha;
+
+    if (ghClient) {
+      // 1. Verify PR state directly from GitHub
+      let pullRequest;
+      try {
+        pullRequest = await ghClient.getPullRequest(ref);
+      } catch {
+        return {
+          status: 409 as const,
+          error: "not_ready" as const,
+          missing: "deployment_verification" as const,
+          message: "GitHub could not be reached to verify the pull request.",
+        };
+      }
+
+      if (pullRequest.state === "closed" && !pullRequest.merged) {
+        return {
+          status: 409 as const,
+          error: "not_ready" as const,
+          missing: "pull_request" as const,
+          message: "That pull request is closed without being merged.",
+        };
+      }
+
+      const headToVerify = acceptedHeadSha || pullRequest.headSha;
+      if (pullRequest.headSha && headToVerify && pullRequest.headSha !== headToVerify) {
+        return {
+          status: 409 as const,
+          error: "not_ready" as const,
+          missing: "pull_request" as const,
+          message: "The pull request's head commit changed since verification. Please re-review.",
+        };
+      }
+
+      // 2. Verify CI/CD checks
+      let green = false;
+      try {
+        green = await ghClient.checksGreen(ref, headToVerify);
+      } catch {
+        green = false;
+      }
+      if (!green) {
+        return {
+          status: 409 as const,
+          error: "not_ready" as const,
+          missing: "deployment_verification" as const,
+          message: "GitHub Actions CI/CD checks or deployment runs have not passed for this pull request head commit.",
+        };
+      }
+
+      // 3. Execute GitHub merge if not already merged
+      if (pullRequest.merged) {
+        mergeCommitSha = pullRequest.headSha;
+      } else {
+        let mergeResult;
         try {
-          green = await ghClient.checksGreen(ref, acceptedHeadSha);
+          mergeResult = await ghClient.mergePullRequest(ref, headToVerify);
         } catch {
-          green = false;
+          mergeResult = { merged: false };
         }
-        if (!green) {
+
+        if (!mergeResult.merged) {
+          const failureReason = mergeResult.conflict
+            ? "The pull request changed after its checks were verified."
+            : mergeResult.forbidden
+              ? "The app is not allowed to merge this repository."
+              : mergeResult.noAllowedMethod
+                ? "The repository allows no merge method the app can use."
+                : "GitHub refused the merge.";
+
+          await publish(tx, {
+            tenantId: bug.tenantId,
+            type: "github.merge_failed",
+            payload: { issueId: bug.id, reason: failureReason, pullRequestUrl: bug.pullRequestUrl },
+            actorAgentId: agent.agentId,
+            bugId: bug.id,
+          });
+          await audit(agent, "github.merge_failed", `bug:${bug.id}`, { reason: failureReason }, { bugId: bug.id, db: tx });
+
+          const recipient = claim?.beneficiaryUserId ?? bug.assigneeId ?? null;
+          if (recipient) {
+            notifyMergeFailed({
+              bugId: bug.id,
+              bugTitle: bug.title,
+              recipientId: recipient,
+              reason: failureReason,
+              agent: { name: agent.name },
+            });
+          }
+
           return {
             status: 409 as const,
             error: "not_ready" as const,
-            missing: "deployment_verification" as const,
-            message: "GitHub Actions CI/CD checks or deployment runs have not passed for this pull request head commit.",
+            missing: "github_merge_failed" as const,
+            message: failureReason,
           };
         }
+
+        mergeCommitSha = mergeResult.sha ?? headToVerify;
       }
     }
 
@@ -468,6 +566,7 @@ export async function acceptFix(
         rewardedReviewerUserIds,
         pullRequestUrl: bug.pullRequestUrl,
         headSha: acceptedHeadSha,
+        mergeCommitSha,
         merged: true,
       },
       { bugId: bug.id, db: tx },
@@ -481,6 +580,7 @@ export async function acceptFix(
         rewardedReviewerUserIds,
         pullRequestUrl: bug.pullRequestUrl,
         headSha: acceptedHeadSha,
+        mergeCommitSha,
         status: "resolved",
         reviewStatus: "merged",
       },
@@ -492,6 +592,7 @@ export async function acceptFix(
       status: 200 as const,
       accepted: true as const,
       merged: true as const,
+      mergeCommitSha: mergeCommitSha ?? undefined,
       solverUserId,
       rewardedReviewerUserIds,
     };

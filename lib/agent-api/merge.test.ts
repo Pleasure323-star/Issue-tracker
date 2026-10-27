@@ -39,6 +39,9 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 const redesign = vi.hoisted(() => ({ assertRedesignOpen: vi.fn() }));
 vi.mock("@/lib/redesigns", () => ({ assertRedesignOpen: redesign.assertRedesignOpen }));
 
+const notify = vi.hoisted(() => ({ notifyMergeFailed: vi.fn() }));
+vi.mock("@/lib/agent-notifications", () => ({ notifyMergeFailed: notify.notifyMergeFailed }));
+
 import { IssueApiError } from "@/lib/agent-api/issues";
 import { acceptFix, executeAdminMerge } from "./merge";
 import { resetWorkflowCache } from "@/lib/workflow";
@@ -618,6 +621,101 @@ describe("acceptFix: a successful accept (#434)", () => {
       message: expect.stringContaining("GitHub Actions CI/CD checks"),
     });
     expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("admin merger refuses to merge and writes 0 points when the pull request is closed without being merged", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow());
+    const client = {
+      getPullRequest: vi.fn(async () => ({ state: "closed", merged: false, mergeable: false, headSha: "linked-sha" })),
+      checksGreen: vi.fn(async () => true),
+      mergePullRequest: vi.fn(),
+    };
+
+    const result = await executeAdminMerge(merger("m1", "mo", "admin_merger"), "bug1", { client });
+    expect(result).toMatchObject({
+      status: 409,
+      error: "not_ready",
+      missing: "pull_request",
+      message: "That pull request is closed without being merged.",
+    });
+    expect(client.mergePullRequest).not.toHaveBeenCalled();
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+  });
+
+  it("admin merger aborts transaction, emits github.merge_failed, and writes 0 points when GitHub merge fails", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow());
+    const client = {
+      getPullRequest: vi.fn(async () => ({ state: "open", merged: false, mergeable: true, headSha: "linked-sha" })),
+      checksGreen: vi.fn(async () => true),
+      mergePullRequest: vi.fn(async () => ({ merged: false, conflict: true })),
+    };
+
+    const result = await executeAdminMerge(merger("m1", "mo", "admin_merger"), "bug1", { client });
+    expect(result).toMatchObject({
+      status: 409,
+      error: "not_ready",
+      missing: "github_merge_failed",
+      message: "The pull request changed after its checks were verified.",
+    });
+    expect(client.mergePullRequest).toHaveBeenCalled();
+    expect(db.bug.update).not.toHaveBeenCalled();
+    expect(db.pointEntry.createMany).not.toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "github.merge_failed",
+        }),
+      }),
+    );
+  });
+
+  it("admin merger executes mergePullRequest, persists mergeCommitSha, and resolves issue with points on success", async () => {
+    confirmWith("rob", "sam");
+    verdict("r1", "rob");
+    verdict("r2", "sam");
+    db.bug.findFirst.mockResolvedValue(bugRow());
+    const client = {
+      getPullRequest: vi.fn(async () => ({ state: "open", merged: false, mergeable: true, headSha: "linked-sha" })),
+      checksGreen: vi.fn(async () => true),
+      mergePullRequest: vi.fn(async () => ({ merged: true, sha: "git-merge-commit-sha-999" })),
+    };
+
+    const result = await executeAdminMerge(merger("m1", "mo", "admin_merger"), "bug1", { client });
+    expect(result).toMatchObject({
+      status: 200,
+      accepted: true,
+      merged: true,
+      mergeCommitSha: "git-merge-commit-sha-999",
+      solverUserId: "ada",
+    });
+    expect(client.mergePullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "Zedu-Endor", repo: "issue-tracker" }),
+      "linked-sha",
+    );
+    expect(db.bug.update).toHaveBeenCalledWith({
+      where: { id: "bug1" },
+      data: { status: "resolved", reviewStatus: "merged" },
+    });
+    expect(db.pointEntry.createMany).toHaveBeenCalled();
+    expect(db.agentAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "issue.accepted",
+          payload: expect.objectContaining({
+            merged: true,
+            mergeCommitSha: "git-merge-commit-sha-999",
+          }),
+        }),
+      }),
+    );
   });
 });
 
