@@ -429,7 +429,7 @@ export async function createBugAction(
   redirect(issuePath(bug.number));
 }
 
-/** Updates status (assignee/admin) and severity/assignee (admin) and logs activity. */
+/** Updates issue status/triage and lets any signed-in workspace member change severity. */
 export async function updateBugAction(
   bugId: string,
   formData: FormData,
@@ -487,7 +487,7 @@ export async function updateBugAction(
     return { error: TICKET_TRIAGE_ERRORS.statusUnauthorized };
   }
 
-  if (!admin && !isAssignee && !isSelfAssigning) {
+  if (!admin && !isAssignee && !isSelfAssigning && !formData.has("severity")) {
     return {
       error: "Only the assignee, or an owner or admin of this organization, can update this issue",
     };
@@ -520,7 +520,7 @@ export async function updateBugAction(
   const typeRaw = formData.get("typeId");
   const parsed = updateBugSchema.safeParse({
     status: requestedStatus,
-    severity: admin ? formData.get("severity") || undefined : undefined,
+    severity: formData.get("severity") || undefined,
     typeId: admin
       ? typeRaw === "" || typeRaw === "none"
         ? null
@@ -592,8 +592,8 @@ export async function updateBugAction(
   } = {};
 
   if (parsed.data.status) data.status = parsed.data.status;
+  if (parsed.data.severity) data.severity = parsed.data.severity;
   if (admin) {
-    if (parsed.data.severity) data.severity = parsed.data.severity;
     if (parsed.data.typeId !== undefined) {
       data.typeId = parsed.data.typeId === "" ? null : parsed.data.typeId;
     }

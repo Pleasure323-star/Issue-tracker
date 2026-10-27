@@ -138,6 +138,11 @@ const mockUserFindMany = vi.mocked(prisma.user.findMany);
 const mockBugFindUnique = vi.mocked(prisma.bug.findUnique);
 
 describe("BugDetailPage conditional user query (#349)", () => {
+  it("renders the priority editor for signed-in viewers of active issues", () => {
+    expect(pageSource).toMatch(/\{!bug\.isDeleted \? \([\s\S]*?<UpdateIssueForm/);
+    expect(pageSource).toContain("canUpdateStatus={canUpdateStatus}");
+  });
+
   it("guards prisma.user.findMany behind canTriage in source code", () => {
     // Assert structural invariant: user query must be conditionally executed
     expect(pageSource).toMatch(/canTriage[\s\S]*?prisma\.user\.findMany/);

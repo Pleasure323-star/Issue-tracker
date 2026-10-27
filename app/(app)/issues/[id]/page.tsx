@@ -999,7 +999,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
             }
           />
 
-          {canUpdateStatus && !bug.isDeleted ? (
+          {!bug.isDeleted ? (
             <UpdateIssueForm
               bugId={bug.id}
               status={bug.status}
@@ -1019,6 +1019,7 @@ export default async function BugDetailPage({ params, searchParams }: BugPagePro
                   : milestoneOptions
               }
               canEditTriage={canTriage}
+              canUpdateStatus={canUpdateStatus}
             />
           ) : null}
 

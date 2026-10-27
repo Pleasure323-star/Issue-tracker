@@ -171,7 +171,7 @@ describe("updateBugAction authorization (#218)", () => {
     ["user", null, { assigneeId: ME, status: "open" }, TICKET_TRIAGE_ERRORS.statusUnauthorized, null],
     ["user", OTHER, { assigneeId: ME }, TICKET_ASSIGN_ERRORS.needsAgentClaim, null],
     ["user", ME, { status: "resolved" }, null, { status: "resolved" }],
-    ["user", ME, { status: "in_progress", severity: "critical", typeId: "t1", categoryId: "c1" }, null, { status: "in_progress" }],
+    ["user", ME, { status: "in_progress", severity: "critical", typeId: "t1", categoryId: "c1" }, null, { status: "in_progress", severity: "critical" }],
     ["user", ME, { assigneeId: OTHER }, TICKET_ASSIGN_ERRORS.unauthorized, null],
     ["user", ME, { assigneeId: "" }, null, { assigneeId: null }],
     ["admin", OTHER, { assigneeId: SOMEONE, severity: "critical", status: "closed" }, null, { status: "closed", severity: "critical", assigneeId: SOMEONE }],
@@ -195,6 +195,45 @@ describe("updateBugAction authorization (#218)", () => {
       }
     },
   );
+
+  it("lets a workspace member change priority on an issue assigned to someone else", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(OTHER));
+
+    await expect(updateBugAction("bug1", form({ severity: "critical" }))).resolves.toEqual({ ok: true });
+
+    expect(written).toEqual({ severity: "critical" });
+    expect(activities).toEqual(["severity_changed"]);
+    expect(publishWebEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bugId: "bug1",
+        type: "issue.updated",
+        payload: expect.objectContaining({ changed: ["severity"], values: { severity: "critical" } }),
+      }),
+    );
+  });
+
+  it("does not let priority permission authorize a status change", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(OTHER));
+
+    await expect(
+      updateBugAction("bug1", form({ severity: "critical", status: "resolved" })),
+    ).resolves.toEqual({ error: TICKET_TRIAGE_ERRORS.statusUnauthorized });
+    expect(written).toBeNull();
+  });
+
+  it("rejects an invalid priority from a regular workspace member", async () => {
+    mockUser.mockResolvedValue({ id: ME, name: "Me", role: "user" });
+    db.bug.findUnique.mockResolvedValue(issue(OTHER));
+
+    const result = await updateBugAction("bug1", form({ severity: "urgent" }));
+
+    expect(result.error).toBeTruthy();
+    expect(written).toBeNull();
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
 
   it("lets an assignee change status without an active claim", async () => {
     db.issueClaim.findFirst.mockResolvedValue(null);
