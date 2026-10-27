@@ -9,6 +9,7 @@ import { audit } from "@/lib/agents/audit";
 import { consumeAgentBudget, agentBudgetExceededResponse } from "@/lib/agents/rate-budget";
 import { withAgentBudgetHeaders, type AgentBudgetQuota } from "@/lib/agents/rate-budget-headers";
 import { createBugSchema, commentSchema, statusSchema, severitySchema } from "@/lib/validations/issue";
+import { isOrganizationAdmin } from "@/lib/organization-role";
 import { parsePlatformFilter, platformFilterWhere } from "@/lib/platform-filter";
 import { boundSearchTerm, escapeSearchQuery } from "@/lib/search";
 import { parseProjectAreaFilter, projectAreaFilterWhere } from "@/lib/project-area-filter";
@@ -585,4 +586,51 @@ async function linkAgentAttachments(
   if (referenced.length > 0) {
     await linkAttachments(tx, { ids: referenced, uploaderId: agent.ownerId, bugId: input.bugId, commentId: input.commentId ?? null });
   }
+}
+
+/**
+ * A short instruction note a human leaves on an issue that has an active
+ * agent claim. The agent receives it as an `issue.human_note` event so it can
+ * read the note in its event feed. The note is not stored as a comment or
+ * attached to the bug row; it is published as an event so the receiving agent
+ * can act on it in real time.
+ */
+export const humanNoteSchema = z.object({
+  note: z.string().trim().min(1).max(500),
+});
+
+export async function addHumanNote(agent: AgentContext, bugId: string, note: string) {
+  const input = humanNoteSchema.parse({ note });
+
+  const bug = await prisma.bug.findUnique({
+    where: { id: bugId },
+    select: { id: true, status: true, tenantId: true, projectId: true, reporterId: true },
+  });
+  if (!bug) throw new IssueApiError(404, "Issue not found.");
+  if (bug.status !== "in_progress") throw new IssueApiError(409, "This issue is not in progress.");
+
+  const claim = await prisma.issueClaim.findFirst({
+    where: { bugId, releasedAt: null, status: { in: ["offered", "active"] } },
+    select: { id: true },
+  });
+  if (!claim) throw new IssueApiError(409, "This issue has no active agent claim.");
+
+  const membership = await prisma.membership.findUnique({
+    where: { tenantId_userId: { tenantId: bug.tenantId, userId: agent.ownerId } },
+    select: { role: true },
+  });
+  const isAdmin = isOrganizationAdmin(membership?.role, agent.ownerRole);
+  if (bug.reporterId !== agent.ownerId && !isAdmin) {
+    throw new IssueApiError(403, "Only the issue reporter or an organization admin can add a note.");
+  }
+
+  await publish(prisma, {
+    tenantId: bug.tenantId,
+    type: "issue.human_note",
+    actorAgentId: agent.agentId,
+    bugId,
+    payload: { note: input.note, actorId: agent.ownerId },
+  });
+
+  return { note: input.note };
 }
