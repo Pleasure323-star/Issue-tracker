@@ -50,6 +50,8 @@ export function UpdateIssueForm({
   types = [],
   milestones = [],
   canEditTriage = true,
+  canUpdateStatus = true,
+  canEditSeverity = true,
 }: {
   bugId: string;
   status: Status;
@@ -66,8 +68,12 @@ export function UpdateIssueForm({
   types?: TypeOption[];
   /** Open milestones, plus the current one even if it was since closed. */
   milestones?: MilestoneOption[];
-  /** Admins can edit severity/type/category/assignee; assignees only change status. */
+  /** Organization admins can edit type/category/assignee and other triage fields. */
   canEditTriage?: boolean;
+  /** Assignees and organization admins can change status. */
+  canUpdateStatus?: boolean;
+  /** Every signed-in workspace member can change severity/priority. */
+  canEditSeverity?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -134,16 +140,16 @@ export function UpdateIssueForm({
         setError(null);
         markSaved(false);
         const formData = new FormData();
-        formData.set("status", draft.status);
+        if (canUpdateStatus) formData.set("status", draft.status);
+        if (canEditSeverity) formData.set("severity", draft.severity);
         if (asksForNote) formData.set("resolutionNote", note);
         if (canEditTriage) {
           formData.set("typeId", draft.typeId);
-          formData.set("severity", draft.severity);
           formData.set("categoryId", draft.categoryId);
           formData.set("areaId", draft.areaId);
           formData.set("assigneeId", draft.assigneeId);
           formData.set("milestoneId", draft.milestoneId);
-        } else if (assigneeId) {
+        } else if (canUpdateStatus && assigneeId) {
           formData.set("assigneeId", draft.assigneeId);
         }
         startTransition(async () => {
@@ -158,7 +164,7 @@ export function UpdateIssueForm({
       }}
     >
       <h2 className="text-sm font-semibold text-zk-text">
-        {canEditTriage ? "Triage" : "Update status"}
+        {canEditTriage ? "Triage" : canUpdateStatus ? "Update issue" : "Change priority"}
       </h2>
       {/* Remount the fields when the saved values change so they never show
           (and re-submit) stale values after a save (#261). */}
@@ -167,27 +173,51 @@ export function UpdateIssueForm({
         className={
           canEditTriage
             ? "grid gap-3 sm:grid-cols-4"
-            : "grid gap-3 sm:grid-cols-2 sm:max-w-md"
+            : canUpdateStatus
+              ? "grid gap-3 sm:grid-cols-2 sm:max-w-md"
+              : "grid gap-3 sm:max-w-xs"
         }
       >
-        <div>
-          <label htmlFor="status" className="mb-1 block text-xs font-medium text-zk-text2">
-            Status
-          </label>
-          <select
-            id="status"
-            name="status"
-            value={draft.status}
-            onChange={(event) => set("status", event.target.value)}
-            className={selectClass}
-          >
-            {statuses.map((value) => (
-              <option key={value} value={value}>
-                {statusLabel[value]}
-              </option>
-            ))}
-          </select>
-        </div>
+        {canUpdateStatus ? (
+          <div>
+            <label htmlFor="status" className="mb-1 block text-xs font-medium text-zk-text2">
+              Status
+            </label>
+            <select
+              id="status"
+              name="status"
+              value={draft.status}
+              onChange={(event) => set("status", event.target.value)}
+              className={selectClass}
+            >
+              {statuses.map((value) => (
+                <option key={value} value={value}>
+                  {statusLabel[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {canEditSeverity ? (
+          <div>
+            <label htmlFor="severity" className="mb-1 block text-xs font-medium text-zk-text2">
+              Priority
+            </label>
+            <select
+              id="severity"
+              name="severity"
+              value={draft.severity}
+              onChange={(event) => set("severity", event.target.value)}
+              className={selectClass}
+            >
+              {severities.map((value) => (
+                <option key={value} value={value}>
+                  {severityLabel[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {canEditTriage ? (
           <>
             <div>
@@ -205,27 +235,6 @@ export function UpdateIssueForm({
                 {types.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="severity"
-                className="mb-1 block text-xs font-medium text-zk-text2"
-              >
-                Severity
-              </label>
-              <select
-                id="severity"
-                name="severity"
-                value={draft.severity}
-                onChange={(event) => set("severity", event.target.value)}
-                className={selectClass}
-              >
-                {severities.map((value) => (
-                  <option key={value} value={value}>
-                    {severityLabel[value]}
                   </option>
                 ))}
               </select>
@@ -306,7 +315,7 @@ export function UpdateIssueForm({
               />
             </div>
           </>
-        ) : assigneeId ? (
+        ) : canUpdateStatus && assigneeId ? (
           <div>
             <label
               htmlFor="assigneeId"

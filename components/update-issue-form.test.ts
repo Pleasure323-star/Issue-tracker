@@ -20,6 +20,11 @@ describe("UpdateIssueForm", () => {
     }
   });
 
+  it("shows the priority selector outside the admin-only triage controls", () => {
+    expect(source).toMatch(/\{canEditSeverity \? \([\s\S]*?Priority[\s\S]*?draft\.severity[\s\S]*?\) : null\}[\s\S]*?\{canEditTriage \? \(/);
+    expect(source).toContain('canUpdateStatus ? "Update issue" : "Change priority"');
+  });
+
   it("submits via onSubmit, not the action prop, to avoid React's form reset", () => {
     expect(source).toContain("onSubmit={(event) => {");
     expect(source).toContain("event.preventDefault();");
